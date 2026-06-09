@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:flutter_application_camiones/presentacion/modelos_vista/ciudadano_modelo.dart';
 
 class MapaCiudadanoScreen extends StatefulWidget {
   const MapaCiudadanoScreen({super.key});
@@ -13,42 +14,44 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
   int _currentIndex = 0;
   final MapController _mapController = MapController();
 
+  // 2️⃣ INSTANCIAMOS EL MODELO VISTA DE LA ARQUITECTURA
+  final CiudadanoModeloVista _modeloVista = CiudadanoModeloVista();
+
   // Coordenadas base de Tantoyuca
   final LatLng _tantoyucaCentro = const LatLng(21.3510, -98.2285);
-  final LatLng _camionSimulado = const LatLng(21.3540, -98.2240);
 
-  // Ubicación de la casa del Ciudadano (Paso previo/Fijar casa)
+  // Ubicación de la casa del Ciudadano
   LatLng? _casaCiudadano;
   bool _modoSeleccionarCasa = false;
 
-  // Atributos para la ubicación del Reporte Ciudadano (latitud y longitud del diagrama)
+  // Ubicación del Reporte Ciudadano
   LatLng? _ubicacionReporte;
-  bool _modoSeleccionarReporte = false; // Controla el sub-mapa del reporte
+  bool _modoSeleccionarReporte = false;
 
-  final List<Map<String, dynamic>> _estatusCamiones = [
-    {
-      "placa": "XW-54-210",
-      "sector": "Zona Centro",
-      "estado": "En Ruta",
-      "activo": true,
-    },
-    {
-      "placa": "AB-87-341",
-      "sector": "La Garita",
-      "estado": "Disponible",
-      "activo": true,
-    },
-    {
-      "placa": "JK-12-990",
-      "sector": "Ninguno",
-      "estado": "Fuera de Servicio",
-      "activo": false,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // 3️⃣ ENCENDEMOS EL ESCUCHADOR EN TIEMPO REAL
+    _modeloVista.addListener(_onViewModelChange);
+    _modeloVista.escucharCamiones();
+  }
+
+  @override
+  void dispose() {
+    // 4️⃣ APAGAMOS LA ESCUCHA AL SALIR PARA PRESERVAR MEMORIA
+    _modeloVista.removeListener(_onViewModelChange);
+    _modeloVista.detenerEscucha();
+    _modeloVista.dispose();
+    super.dispose();
+  }
+
+  void _onViewModelChange() {
+    if (!mounted) return;
+    setState(() {}); // Redibuja la interfaz ante actualizaciones de Supabase
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Títulos dinámicos según el estado de la pantalla
     String appBarTitle = 'Recoruta - Mapa';
     if (_modoSeleccionarCasa) appBarTitle = 'Oprime tu Casa en el Mapa';
     if (_modoSeleccionarReporte) appBarTitle = 'Ubicación del Problema';
@@ -58,7 +61,6 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
       if (_currentIndex == 2) appBarTitle = 'Mi Perfil';
     }
 
-    // Si el usuario está seleccionando la ubicación del reporte, muestra el mapa de selección
     Widget cuerpoPantalla;
     if (_modoSeleccionarReporte) {
       cuerpoPantalla = _buildMapaSeleccionReporte();
@@ -96,7 +98,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
       ),
       body: cuerpoPantalla,
       bottomNavigationBar: _modoSeleccionarCasa || _modoSeleccionarReporte
-          ? null // Oculta barra si se está interactuando con algún mapa de selección
+          ? null
           : BottomNavigationBar(
               currentIndex: _currentIndex,
               onTap: (index) {
@@ -121,7 +123,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
     );
   }
 
-  // 🗺️ VISTA 1: El Mapa Principal de Monitoreo
+  // 🗺️ VISTA 1: El Mapa Principal de Monitoreo (Alineado al Tiempo Real)
   Widget _buildMapaSection() {
     return Stack(
       children: [
@@ -146,25 +148,31 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
             ),
             MarkerLayer(
               markers: [
-                Marker(
-                  point: _camionSimulado,
-                  width: 50,
-                  height: 50,
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: Colors.black26, blurRadius: 6),
-                      ],
+                // 🔄 MAPEO DINÁMICO: Pintamos un camión por cada unidad activa devuelta por Supabase
+                for (var camion in _modeloVista.camionesActivos)
+                  Marker(
+                    point: LatLng(
+                      (camion['latitud'] as num).toDouble(),
+                      (camion['longitud'] as num).toDouble(),
                     ),
-                    child: const Icon(
-                      Icons.local_shipping,
-                      color: Color(0xFF2E7D32),
-                      size: 32,
+                    width: 50,
+                    height: 50,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(color: Colors.black26, blurRadius: 6),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.local_shipping,
+                        color: Color(0xFF2E7D32),
+                        size: 32,
+                      ),
                     ),
                   ),
-                ),
+
                 if (_casaCiudadano != null)
                   Marker(
                     point: _casaCiudadano!,
@@ -176,6 +184,39 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
             ),
           ],
         ),
+
+        // Alerta visual de carga de radar
+        if (_modeloVista.estaCargando)
+          const Positioned(
+            top: 70,
+            left: 16,
+            child: Card(
+              elevation: 2,
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Sincronizando radar...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
 
         if (_modoSeleccionarCasa)
           Positioned(
@@ -229,7 +270,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
     );
   }
 
-  // 📝 VISTA 2: Formulario para Redactar Reporte con Selección de Ubicación
+  // 📝 VISTA 2: Formulario para Redactar Reporte
   Widget _buildReporteSection() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -241,7 +282,6 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 24),
-
           TextField(
             maxLines: 4,
             decoration: InputDecoration(
@@ -252,8 +292,6 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
             ),
           ),
           const SizedBox(height: 24),
-
-          // 📍 NUEVO APARTADO: UBICACIÓN DEL REPORTE (Latitud/Longitud del diagrama)
           const Text(
             'Ubicación del Problema',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -309,7 +347,6 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
             ),
           ),
           const SizedBox(height: 24),
-
           OutlinedButton.icon(
             onPressed: () {},
             style: OutlinedButton.styleFrom(
@@ -325,7 +362,6 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
             ),
           ),
           const SizedBox(height: 32),
-
           ElevatedButton(
             onPressed: () {
               if (_ubicacionReporte == null) {
@@ -452,7 +488,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
     );
   }
 
-  // Las demás secciones auxiliares permanecen idénticas...
+  // 📋 MODAL BOTTOM SHEET CONNECTED TO SUPABASE
   void _mostrarListaCamiones(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -463,6 +499,9 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
         ),
       ),
       builder: (context) {
+        // Obtenemos los camiones dinámicos desde el Modelo-Vista
+        final camiones = _modeloVista.todosLosCamiones;
+
         return Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
@@ -470,60 +509,79 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Estado de las Unidades',
+                'Estado de las Unidades (En Vivo)',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: _estatusCamiones.length,
-                  itemBuilder: (context, index) {
-                    final camion = _estatusCamiones[index];
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: CircleAvatar(
-                        backgroundColor: camion['activo']
-                            ? Colors.green[50]
-                            : Colors.red[50],
-                        child: Icon(
-                          Icons.local_shipping,
-                          color: camion['activo']
-                              ? const Color(0xFF2E7D32)
-                              : Colors.red,
-                        ),
-                      ),
-                      title: Text(
-                        'Camión Placas: ${camion['placa']}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text('Sector: ${camion['sector']}'),
-                      trailing: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: camion['activo']
-                              ? Colors.green[100]
-                              : Colors.red[100],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          camion['estado'],
-                          style: TextStyle(
-                            color: camion['activo']
-                                ? Colors.green[900]
-                                : Colors.red[900],
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+              if (camiones.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Text(
+                    'No hay vehículos registrados en el sistema.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+              if (camiones.isNotEmpty)
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: camiones.length,
+                    itemBuilder: (context, index) {
+                      final camion = camiones[index];
+                      final bool esActivo =
+                          camion['estado'] == 'En Ruta' ||
+                          camion['estado'] == 'Disponible';
+
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundColor: esActivo
+                              ? Colors.green[50]
+                              : Colors.red[50],
+                          child: Icon(
+                            Icons.local_shipping,
+                            color: esActivo
+                                ? const Color(0xFF2E7D32)
+                                : Colors.red,
                           ),
                         ),
-                      ),
-                    );
-                  },
+                        title: Text(
+                          'Camión Placas: ${camion['placa'] ?? 'Sin Placa'}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          'Última act: ${camion['ultima_actualizacion'] != null ? (camion['ultima_actualizacion'].toString().substring(11, 19)) : 'Nunca'}',
+                        ),
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: camion['estado'] == 'En Ruta'
+                                ? Colors.green[100]
+                                : (camion['estado'] == 'Disponible'
+                                      ? Colors.blue[100]
+                                      : Colors.red[100]),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            camion['estado'] ?? 'Desconocido',
+                            style: TextStyle(
+                              color: camion['estado'] == 'En Ruta'
+                                  ? Colors.green[900]
+                                  : (camion['estado'] == 'Disponible'
+                                        ? Colors.blue[900]
+                                        : Colors.red[900]),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
             ],
           ),
         );
@@ -555,7 +613,10 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
           ),
           const Spacer(),
           OutlinedButton.icon(
-            onPressed: () {},
+            onPressed: () {
+              _modeloVista.detenerEscucha();
+              Navigator.pushReplacementNamed(context, '/');
+            },
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(50),
               side: const BorderSide(color: Colors.red),

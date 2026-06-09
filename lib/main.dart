@@ -22,14 +22,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Recoruta',
-      debugShowCheckedModeBanner:
-          false, // Quita la etiqueta roja de "Debug" en la esquina
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
         useMaterial3: true,
       ),
       // Definimos la pantalla de inicio de la aplicación
-      home: const InterfazChoferScreen(),
+      home: const LoginPantalla(),
     );
   }
 }

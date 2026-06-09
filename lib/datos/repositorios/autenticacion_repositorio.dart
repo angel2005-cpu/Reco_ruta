@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AutenticacionRepositorio {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// inserta los datos en usuarios y 'ciudadanos
+  //inserta los datos en 'usuarios' y 'ciudadanos'
   Future<void> registrarCiudadano({
     required String usuario,
     required String password,
@@ -12,7 +12,6 @@ class AutenticacionRepositorio {
     required double longitud,
   }) async {
     try {
-      // 1. Insertar en la tablay recuperar el id generado
       final List<Map<String, dynamic>> nuevoUsuario = await _supabase
           .from('usuarios')
           .insert({
@@ -25,7 +24,6 @@ class AutenticacionRepositorio {
       if (nuevoUsuario.isNotEmpty) {
         final int idGenerado = nuevoUsuario.first['id_usuario'];
 
-        // insertar en la tabla ciudadanos usando ese mismo id
         await _supabase.from('ciudadanos').insert({
           'id_usuario': idGenerado,
           'nombre': nombre,
@@ -42,13 +40,13 @@ class AutenticacionRepositorio {
     }
   }
 
-  /// valida las credenciales y devuelve el rol del usuario
+  /// 🔑 LOGIN: Valida las credenciales y devuelve el rol del usuario
   Future<String> iniciarSesion({
     required String usuario,
     required String password,
   }) async {
     try {
-      // buscar el usuario y contraseña que coincidan
+      // Consultamos la tabla 'usuarios' buscando coincidencia exacta
       final List<Map<String, dynamic>> respuesta = await _supabase
           .from('usuarios')
           .select('rol')
@@ -56,10 +54,10 @@ class AutenticacionRepositorio {
           .eq('contrasena', password);
 
       if (respuesta.isNotEmpty) {
-        // Si coincide, devolvemos el rol ('ciudadano' o 'chofer')
+        // Si hay coincidencia, retornamos su rol ('ciudadano' o 'chofer')
         return respuesta.first['rol'] as String;
       } else {
-        // Si la lista regresa vacía, las credenciales son incorrectas
+        // Si la lista regresa vacía, es porque los datos no coinciden
         throw Exception('Usuario o contraseña incorrectos.');
       }
     } catch (e) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:flutter_application_camiones/presentacion/modelos_vista/chofer_modelo.dart';
 
 class InterfazChoferScreen extends StatefulWidget {
   const InterfazChoferScreen({super.key});
@@ -11,8 +12,13 @@ class InterfazChoferScreen extends StatefulWidget {
 
 class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
   int _currentIndex = 0;
-  bool _isRutaActiva = false;
   String _estadoCamion = "Disponible";
+
+  // INSTANCIAMOS EL MODELO VISTA DE LA ARQUITECTURA
+  final ChoferModeloVista _modeloVista = ChoferModeloVista();
+
+  // ID estático de prueba para el camión asignado (Mapeado a tu tabla 'vehiculos')
+  final int _idVehiculoAsignado = 1;
 
   final List<Map<String, dynamic>> _reportesCiudadanos = [
     {
@@ -34,12 +40,46 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
   final LatLng _tantoyucaCentro = const LatLng(21.3510, -98.2285);
 
   @override
+  void initState() {
+    super.initState();
+    // 3ESCUCHAMOS LOS CAMBIOS DE ESTADO DEL GPS
+    _modeloVista.addListener(_onViewModelChange);
+  }
+
+  @override
+  void dispose() {
+    // 4LIMPIAMOS EL LISTENER PARA EVITAR FUGAS DE MEMORIA
+    _modeloVista.removeListener(_onViewModelChange);
+    _modeloVista.dispose();
+    super.dispose();
+  }
+
+  void _onViewModelChange() {
+    if (!mounted) return;
+
+    // Si el GPS o Supabase reportan un error, lo disparamos en un SnackBar
+    if (_modeloVista.mensajeError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_modeloVista.mensajeError!),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+
+    // Sincronizamos el Dropdown visual según si el GPS está transmitiendo o no
+    setState(() {
+      _estadoCamion = _modeloVista.estaTransmitiendo ? 'En Ruta' : 'Disponible';
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final List<Widget> _screens = [
       _buildMapaRutaSection(),
       _buildVerReportesSection(),
       _buildIncidenciaSection(),
-      _buildPerfilSection(), // Aquí incluimos el horario
+      _buildPerfilSection(),
     ];
 
     final List<String> _titles = [
@@ -89,8 +129,11 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     );
   }
 
-  // 🗺️ VISTA 1: Mapa de Ruta + Selector de Estado
+  // VISTA 1: Mapa de Ruta + Selector de Estado Conectados al GPS Real
   Widget _buildMapaRutaSection() {
+    // Leemos el estado reactivo desde el Modelo Vista en lugar de una variable local
+    final bool esRutaActiva = _modeloVista.estaTransmitiendo;
+
     return Stack(
       children: [
         FlutterMap(
@@ -120,7 +163,8 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
                     ),
                     child: Icon(
                       Icons.local_shipping,
-                      color: _isRutaActiva
+                      // Cambia de color dinámicamente según la transmisión del GPS
+                      color: esRutaActiva
                           ? const Color(0xFF2E7D32)
                           : Colors.grey,
                       size: 32,
@@ -132,7 +176,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
           ],
         ),
 
-        // Tarjeta Superior: Estado del Camión
+        // Tarjeta Superior: Estado del Camión (Sincronizado al ciclo del GPS)
         Positioned(
           top: 16,
           left: 16,
@@ -171,10 +215,13 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
                           );
                         }).toList(),
                     onChanged: (String? newValue) {
-                      setState(() {
-                        _estadoCamion = newValue!;
-                        _isRutaActiva = (_estadoCamion == 'En Ruta');
-                      });
+                      if (newValue != null) {
+                        if (newValue == 'En Ruta' && !esRutaActiva) {
+                          _modeloVista.iniciarRuta(_idVehiculoAsignado);
+                        } else if (newValue != 'En Ruta' && esRutaActiva) {
+                          _modeloVista.detenerRuta();
+                        }
+                      }
                     },
                   ),
                 ],
@@ -183,20 +230,21 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
           ),
         ),
 
-        // Botón de Iniciar/Detener Ruta
+        // Botón de Iniciar/Detener Ruta conectado al hardware
         Positioned(
           left: 20,
           right: 20,
           bottom: 20,
           child: ElevatedButton.icon(
             onPressed: () {
-              setState(() {
-                _isRutaActiva = !_isRutaActiva;
-                _estadoCamion = _isRutaActiva ? 'En Ruta' : 'Disponible';
-              });
+              if (esRutaActiva) {
+                _modeloVista.detenerRuta();
+              } else {
+                _modeloVista.iniciarRuta(_idVehiculoAsignado);
+              }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: _isRutaActiva
+              backgroundColor: esRutaActiva
                   ? Colors.red[700]
                   : const Color(0xFF2E7D32),
               foregroundColor: Colors.white,
@@ -206,9 +254,9 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
               ),
               elevation: 4,
             ),
-            icon: Icon(_isRutaActiva ? Icons.stop : Icons.play_arrow),
+            icon: Icon(esRutaActiva ? Icons.stop : Icons.play_arrow),
             label: Text(
-              _isRutaActiva ? 'TERMINAR RUTA' : 'INICIAR RUTA (COMPARTIR GPS)',
+              esRutaActiva ? 'TERMINAR RUTA' : 'INICIAR RUTA (COMPARTIR GPS)',
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -352,7 +400,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     );
   }
 
-  //  Perfil del Chofer y SECCIÓN DE HORARIOS
+  // Perfil del Chofer y Agenda
   Widget _buildPerfilSection() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -369,7 +417,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Datos personales del chofer
           Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -396,7 +443,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
             child: Divider(),
           ),
 
-          // 📅 APARTADO DE HORARIO Y OPERACIÓN (Agregado)
           const Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -417,7 +463,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
             elevation: 0,
             child: const ListTile(
               leading: Icon(Icons.calendar_month, color: Color(0xFF2E7D32)),
-              // Todo el horario corrido en una sola línea
               title: Text(
                 'Lun, Mié y Vie — 06:00 AM a 02:00 PM',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
@@ -428,7 +473,11 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
 
           const SizedBox(height: 32),
           OutlinedButton.icon(
-            onPressed: () {},
+            onPressed: () {
+              // Detener transmisión antes de salir
+              _modeloVista.detenerRuta();
+              Navigator.pushReplacementNamed(context, '/');
+            },
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(50),
               side: const BorderSide(color: Colors.red),

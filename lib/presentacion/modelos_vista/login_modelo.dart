@@ -13,11 +13,12 @@ class LoginModeloVista extends ChangeNotifier {
   String? _rolUsuario;
   String? get rolUsuario => _rolUsuario;
 
-  /// Ejecuta el proceso de inicio de sesión
+  /// Ejecuta la validación lógica del Login
   Future<void> ejecutarLogin({
     required String usuario,
     required String password,
   }) async {
+    // Validación básica inicial
     if (usuario.isEmpty || password.isEmpty) {
       _actualizarEstado(error: 'Por favor, llena todos los campos.');
       return;
@@ -26,7 +27,7 @@ class LoginModeloVista extends ChangeNotifier {
     _actualizarEstado(cargando: true, error: null);
 
     try {
-      // Consultamos al repositorio el rol del usuario
+      // Mandamos a pedir el rol al repositorio
       final String rol = await _authRepository.iniciarSesion(
         usuario: usuario.trim(),
         password: password,
@@ -39,7 +40,7 @@ class LoginModeloVista extends ChangeNotifier {
     }
   }
 
-  /// Limpia los datos de sesión anteriores al volver a la pantalla
+  /// Resetea los estados al salir o volver a entrar
   void limpiarDatos() {
     _rolUsuario = null;
     _mensajeError = null;
@@ -49,6 +50,6 @@ class LoginModeloVista extends ChangeNotifier {
   void _actualizarEstado({bool? cargando, String? error}) {
     if (cargando != null) _estaCargando = cargando;
     _mensajeError = error;
-    notifyListeners();
+    notifyListeners(); // Avisa a login_screen.dart que hubo cambios
   }
 }

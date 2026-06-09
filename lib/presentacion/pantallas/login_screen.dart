@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../modelos_vista/login_modelo.dart';
 import 'registro.dart';
+import 'mapa_ciudadano.dart';
+import 'interfaz_chofer.dart';
 
 class LoginPantalla extends StatefulWidget {
   const LoginPantalla({super.key});
@@ -15,12 +17,13 @@ class _LoginPantallaState extends State<LoginPantalla> {
   final TextEditingController _usuarioController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  // Instanciamos el Modelo-Vista correspondiente
+  // Enlazamos nuestro modelo de vista de la arquitectura
   final LoginModeloVista _modeloVista = LoginModeloVista();
 
   @override
   void initState() {
     super.initState();
+    // Añadimos el listener para escuchar los cambios de estado (cargando, error, éxito)
     _modeloVista.addListener(_onViewModelChange);
   }
 
@@ -35,7 +38,7 @@ class _LoginPantallaState extends State<LoginPantalla> {
   void _onViewModelChange() {
     if (!mounted) return;
 
-    // Manejo de la animación de carga
+    // 1. Si está cargando, bloqueamos la UI de forma fluida
     if (_modeloVista.estaCargando) {
       showDialog(
         context: context,
@@ -45,11 +48,11 @@ class _LoginPantallaState extends State<LoginPantalla> {
         ),
       );
     } else if (!_modeloVista.estaCargando && Navigator.canPop(context)) {
-      // Remueve el círculo de carga cuando el servidor responde
+      // Cerramos el círculo de carga cuando el servidor responde
       Navigator.pop(context);
     }
 
-    // Si hay un error en las credenciales
+    // 2. Si las credenciales fallan, arrojamos un SnackBar con el error
     if (_modeloVista.mensajeError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -59,20 +62,20 @@ class _LoginPantallaState extends State<LoginPantalla> {
       );
     }
 
-    // Redirección inteligente según el rol guardado en la base de datos
+    // 3. Redirección automática según el rol de Supabase
     if (_modeloVista.rolUsuario != null) {
       final String rol = _modeloVista.rolUsuario!;
-      _modeloVista.limpiarDatos(); // Limpia el estado para futuros accesos
+      _modeloVista.limpiarDatos(); // Limpiamos para mantener la seguridad
 
       if (rol == 'chofer') {
-        // Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const InterfazChoferScreen()));
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Abriendo interfaz de Chofer...')),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const InterfazChoferScreen()),
         );
       } else {
-        // Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const MapaCiudadanoScreen()));
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Abriendo mapa de Ciudadano...')),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MapaCiudadanoScreen()),
         );
       }
     }
@@ -105,7 +108,7 @@ class _LoginPantallaState extends State<LoginPantalla> {
               ),
               const SizedBox(height: 50),
 
-              // 👤 CAMPO: USUARIO
+              // 👤 Input de Usuario
               TextField(
                 controller: _usuarioController,
                 decoration: InputDecoration(
@@ -121,7 +124,7 @@ class _LoginPantallaState extends State<LoginPantalla> {
               ),
               const SizedBox(height: 20),
 
-              // 🔒 CAMPO: CONTRASEÑA
+              // 🔒 Input de Contraseña
               TextField(
                 controller: _passwordController,
                 obscureText: _ocultarPassword,
@@ -147,7 +150,7 @@ class _LoginPantallaState extends State<LoginPantalla> {
               ),
               const SizedBox(height: 32),
 
-              // 🚀 BOTÓN PRINCIPAL
+              // 🚀 Botón de Ingreso
               ElevatedButton(
                 onPressed: () {
                   _modeloVista.ejecutarLogin(
@@ -162,7 +165,6 @@ class _LoginPantallaState extends State<LoginPantalla> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  elevation: 0,
                 ),
                 child: const Text(
                   'Iniciar Sesión',
@@ -171,7 +173,7 @@ class _LoginPantallaState extends State<LoginPantalla> {
               ),
               const SizedBox(height: 24),
 
-              // ENLACE A REGISTRO
+              // Botón hacia el Registro
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [

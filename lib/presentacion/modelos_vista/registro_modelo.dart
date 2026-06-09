@@ -14,7 +14,7 @@ class RegistroModeloVista extends ChangeNotifier {
   bool _registroExitoso = false;
   bool get registroExitoso => _registroExitoso;
 
-  /// 🛰️ Método para obtener la ubicación GPS actual del dispositivo
+  /// método para obtener la ubicación GPS actual del dispositivo
   Future<Position?> obtenerUbicacionGPS() async {
     bool servicioHabilitado;
     LocationPermission permiso;
@@ -46,13 +46,13 @@ class RegistroModeloVista extends ChangeNotifier {
       return null;
     }
 
-    // Si todo está en orden, obtiene la posición actual con alta precisión
+    // si todo está en orden se obtiene la posición actual con alta precisión
     return await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
   }
 
-  /// 🚀 Lógica de negocio para validar y registrar
+  /// logica para validar y registrar
   Future<void> ejecutarRegistro({
     required String usuario,
     required String password,

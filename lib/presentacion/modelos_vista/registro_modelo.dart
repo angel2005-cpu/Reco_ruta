@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart'; // Importamos el plugin de GPS
+import 'package:geolocator/geolocator.dart';
 import '../../datos/repositorios/autenticacion_repositorio.dart';
 
 class RegistroModeloVista extends ChangeNotifier {

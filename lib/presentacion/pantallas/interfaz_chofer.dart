@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_application_camiones/presentacion/modelos_vista/chofer_modelo.dart';
+import 'package:flutter_application_camiones/presentacion/modelos_vista/reporte_modelo.dart';
+import 'package:flutter_application_camiones/datos/repositorios/reporte_repositorio.dart';
 
 class InterfazChoferScreen extends StatefulWidget {
   const InterfazChoferScreen({super.key});
@@ -14,50 +16,36 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
   int _currentIndex = 0;
   String _estadoCamion = "Disponible";
 
-  // INSTANCIAMOS EL MODELO VISTA DE LA ARQUITECTURA
   final ChoferModeloVista _modeloVista = ChoferModeloVista();
 
-  // ID estático de prueba para el camión asignado (Mapeado a tu tabla 'vehiculos')
+  // Instanciamos el repositorio y ViewModel para operar los reportes
+  final ReporteRepositorio _reporteRepo = ReporteRepositorio();
+  final ReporteModeloVista _reporteModelo = ReporteModeloVista();
+
+  final TextEditingController _incidenciaController = TextEditingController();
+
   final int _idVehiculoAsignado = 1;
-
-  final List<Map<String, dynamic>> _reportesCiudadanos = [
-    {
-      "id": 1,
-      "colonia": "Centro",
-      "descripcion":
-          "Mucha basura acumulada fuera del mercado municipal, los perros están rompiendo las bolsas.",
-      "atendido": false,
-    },
-    {
-      "id": 2,
-      "colonia": "La Garita",
-      "descripcion":
-          "Contenedor comunitario completamente desbordado en la esquina principal.",
-      "atendido": false,
-    },
-  ];
-
   final LatLng _tantoyucaCentro = const LatLng(21.3510, -98.2285);
 
   @override
   void initState() {
     super.initState();
-    // 3ESCUCHAMOS LOS CAMBIOS DE ESTADO DEL GPS
     _modeloVista.addListener(_onViewModelChange);
+    _reporteModelo.addListener(_onReporteStateChange);
   }
 
   @override
   void dispose() {
-    // 4LIMPIAMOS EL LISTENER PARA EVITAR FUGAS DE MEMORIA
     _modeloVista.removeListener(_onViewModelChange);
+    _reporteModelo.removeListener(_onReporteStateChange);
     _modeloVista.dispose();
+    _reporteModelo.dispose();
+    _incidenciaController.dispose();
     super.dispose();
   }
 
   void _onViewModelChange() {
     if (!mounted) return;
-
-    // Si el GPS o Supabase reportan un error, lo disparamos en un SnackBar
     if (_modeloVista.mensajeError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -66,23 +54,49 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
         ),
       );
     }
-
-    // Sincronizamos el Dropdown visual según si el GPS está transmitiendo o no
     setState(() {
       _estadoCamion = _modeloVista.estaTransmitiendo ? 'En Ruta' : 'Disponible';
     });
   }
 
+  void _onReporteStateChange() {
+    if (!mounted) return;
+
+    if (_reporteModelo.mensajeError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_reporteModelo.mensajeError!),
+          backgroundColor: Colors.red,
+        ),
+      );
+      _reporteModelo.resetearEstados();
+    }
+
+    if (_reporteModelo.operacionExitosa) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Incidencia vial registrada con éxito'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _incidenciaController.clear();
+      _reporteModelo.resetearEstados();
+      setState(() {
+        _currentIndex = 0;
+      }); // Regresa al mapa principal de ruta
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final List<Widget> _screens = [
+    final List<Widget> screens = [
       _buildMapaRutaSection(),
       _buildVerReportesSection(),
       _buildIncidenciaSection(),
       _buildPerfilSection(),
     ];
 
-    final List<String> _titles = [
+    final List<String> titles = [
       'Recoruta Chofer - Mapa y Estado',
       'Reportes Ciudadanos',
       'Registrar Incidencia',
@@ -92,21 +106,19 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _titles[_currentIndex],
+          titles[_currentIndex],
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFF2E7D32),
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: _screens[_currentIndex],
+      body: screens[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onTap: (index) => setState(() {
+          _currentIndex = index;
+        }),
         selectedItemColor: const Color(0xFF2E7D32),
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,
@@ -129,11 +141,8 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     );
   }
 
-  // VISTA 1: Mapa de Ruta + Selector de Estado Conectados al GPS Real
   Widget _buildMapaRutaSection() {
-    // Leemos el estado reactivo desde el Modelo Vista en lugar de una variable local
     final bool esRutaActiva = _modeloVista.estaTransmitiendo;
-
     return Stack(
       children: [
         FlutterMap(
@@ -163,7 +172,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
                     ),
                     child: Icon(
                       Icons.local_shipping,
-                      // Cambia de color dinámicamente según la transmisión del GPS
                       color: esRutaActiva
                           ? const Color(0xFF2E7D32)
                           : Colors.grey,
@@ -175,8 +183,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
             ),
           ],
         ),
-
-        // Tarjeta Superior: Estado del Camión (Sincronizado al ciclo del GPS)
         Positioned(
           top: 16,
           left: 16,
@@ -229,8 +235,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
             ),
           ),
         ),
-
-        // Botón de Iniciar/Detener Ruta conectado al hardware
         Positioned(
           left: 20,
           right: 20,
@@ -269,90 +273,155 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     );
   }
 
-  // Listado de Reportes Ciudadanos
+  // 🔄 CONEXIÓN ASÍNCRONA REAL EN TIEMPO REAL CON LA LISTA DE REPORTES
   Widget _buildVerReportesSection() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16.0),
-      itemCount: _reportesCiudadanos.length,
-      itemBuilder: (context, index) {
-        final reporte = _reportesCiudadanos[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 16.0),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _reporteRepo.escucharReportesCiudadanos(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
+          );
+        }
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Center(
+            child: Text(
+              'No hay reportes viales o de basura pendientes.',
+              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500),
+            ),
+          );
+        }
+
+        final reportes = snapshot.data!;
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16.0),
+          itemCount: reportes.length,
+          itemBuilder: (context, index) {
+            final reporte = reportes[index];
+            final bool esAtendido = reporte['estado'] == 'Atendido';
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 16.0),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[500]?.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        "Colonia: ${reporte['colonia']}",
-                        style: TextStyle(
-                          color: Colors.blue[900],
-                          fontWeight: FontWeight.bold,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[500]?.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            "Folio #${reporte['id_reporte']}",
+                            style: TextStyle(
+                              color: Colors.blue[900],
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
+                        Row(
+                          children: [
+                            Text(
+                              reporte['estado'] ?? 'Pendiente',
+                              style: TextStyle(
+                                color: esAtendido
+                                    ? Colors.green
+                                    : Colors.orange,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Icon(
+                              esAtendido
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              color: esAtendido ? Colors.green : Colors.grey,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      reporte['descripcion'] ?? '',
+                      style: const TextStyle(fontSize: 14, height: 1.3),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Coordenadas: (${reporte['latitud']}, ${reporte['longitud']})',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                        fontStyle: FontStyle.italic,
                       ),
                     ),
-                    Icon(
-                      reporte['atendido']
-                          ? Icons.check_circle
-                          : Icons.radio_button_unchecked,
-                      color: reporte['atendido'] ? Colors.green : Colors.grey,
+                    const Divider(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: esAtendido
+                          ? null
+                          : () async {
+                              try {
+                                await _reporteRepo.marcarReporteComoAtendido(
+                                  reporte['id_reporte'],
+                                );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Reporte actualizado a Atendido',
+                                    ),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Error al actualizar reporte',
+                                    ),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2E7D32),
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(45),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        elevation: 0,
+                      ),
+                      icon: const Icon(Icons.assignment_turned_in),
+                      label: Text(
+                        esAtendido
+                            ? 'REPORTE ATENDIDO'
+                            : 'MARCAR COMO ATENDIDO',
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  reporte['descripcion'],
-                  style: const TextStyle(fontSize: 14, height: 1.3),
-                ),
-                const Divider(height: 24),
-                ElevatedButton.icon(
-                  onPressed: reporte['atendido']
-                      ? null
-                      : () {
-                          setState(() {
-                            reporte['atendido'] = true;
-                          });
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2E7D32),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(45),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    elevation: 0,
-                  ),
-                  icon: const Icon(Icons.assignment_turned_in),
-                  label: Text(
-                    reporte['atendido']
-                        ? 'REPORTE ATENDIDO'
-                        : 'MARCAR COMO ATENDIDO',
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
   }
 
-  // Registrar Incidencia
   Widget _buildIncidenciaSection() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -370,6 +439,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
           ),
           const SizedBox(height: 24),
           TextField(
+            controller: _incidenciaController, // Asignamos el controlador
             maxLines: 4,
             decoration: InputDecoration(
               hintText: 'Detalla la incidencia aquí...',
@@ -380,7 +450,13 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
           ),
           const SizedBox(height: 30),
           ElevatedButton.icon(
-            onPressed: () {},
+            onPressed: () {
+              // Disparamos inserción asíncrona de incidencias
+              _reporteModelo.enviarIncidencia(
+                idVehiculo: _idVehiculoAsignado,
+                descripcion: _incidenciaController.text,
+              );
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFD32F2F),
               foregroundColor: Colors.white,
@@ -400,9 +476,8 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     );
   }
 
-  // Perfil del Chofer y Agenda
   Widget _buildPerfilSection() {
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(24.0),
       child: Column(
         children: [
@@ -416,7 +491,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
             ),
           ),
           const SizedBox(height: 16),
-
           Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -437,12 +511,10 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
               subtitle: Text('XW-54-210'),
             ),
           ),
-
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16.0),
             child: Divider(),
           ),
-
           const Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -470,13 +542,11 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
               subtitle: Text('Sector: Zona Centro - Tantoyuca'),
             ),
           ),
-
-          const SizedBox(height: 32),
+          const Spacer(),
           OutlinedButton.icon(
             onPressed: () {
-              // Detener transmisión antes de salir
               _modeloVista.detenerRuta();
-              Navigator.pushReplacementNamed(context, '/');
+              Navigator.pushReplacementNamed(context, '/login');
             },
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(50),

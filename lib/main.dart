@@ -29,6 +29,11 @@ class MyApp extends StatelessWidget {
       ),
       // Definimos la pantalla de inicio de la aplicación
       home: const LoginPantalla(),
+      routes: {
+        '/login': (context) => const LoginPantalla(),
+        '/mapa_ciudadano': (context) => const MapaCiudadanoScreen(),
+        '/interfaz_chofer': (context) => const InterfazChoferScreen(),
+      },
     );
   }
 }

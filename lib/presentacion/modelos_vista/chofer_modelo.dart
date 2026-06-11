@@ -2,10 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_application_camiones/datos/repositorios/vehiculo_repositorio.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ChoferModeloVista extends ChangeNotifier {
   final VehiculoRepositorio _vehiculoRepo = VehiculoRepositorio();
-
+  int? _idVehiculoAsignado;
   // Suscripción activa al GPS para poder apagarla cuando el chofer termine su turno
   StreamSubscription<Position>? _gpsSubscription;
 
@@ -14,6 +15,22 @@ class ChoferModeloVista extends ChangeNotifier {
 
   String? _mensajeError;
   String? get mensajeError => _mensajeError;
+
+  Future<void> cargarVehiculoChofer(int idUsuario) async {
+    try {
+      final respuesta = await Supabase.instance.client
+          .from('choferes')
+          .select('id_vehiculo')
+          .eq('id_usuario', idUsuario)
+          .single();
+
+      _idVehiculoAsignado = respuesta['id_vehiculo'];
+
+      notifyListeners();
+    } catch (e) {
+      print('Error al obtener vehículo: $e');
+    }
+  }
 
   /// Inicia el estado de la ruta (Valida hardware y activa bandera de transmisión)
   Future<void> iniciarRuta(int idVehiculo) async {
@@ -46,11 +63,15 @@ class ChoferModeloVista extends ChangeNotifier {
     required double longitud,
   }) async {
     try {
-      // Consumimos el método de tu repositorio de vehículos
       await _vehiculoRepo.actualizarUbicacionCamion(
         idVehiculo: idVehiculo,
         latitud: latitud,
         longitud: longitud,
+      );
+
+      await _vehiculoRepo.actualizarEstadoVehiculo(
+        idVehiculo: idVehiculo,
+        nuevoEstado: 'En Ruta',
       );
 
       _mensajeError = null;
@@ -71,7 +92,7 @@ class ChoferModeloVista extends ChangeNotifier {
     _estaTransmitiendo = false;
 
     try {
-      // 📡 AVISO GLOBAL: Libera el camión en Supabase
+      // AVISO GLOBAL: Libera el camión en Supabase
       await _vehiculoRepo.actualizarEstadoVehiculo(
         idVehiculo: idVehiculo,
         nuevoEstado: estadoFinal,

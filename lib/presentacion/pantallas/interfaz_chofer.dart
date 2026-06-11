@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_application_camiones/presentacion/modelos_vista/chofer_modelo.dart';
 import 'package:flutter_application_camiones/presentacion/modelos_vista/reporte_modelo.dart';
@@ -13,15 +15,19 @@ class InterfazChoferScreen extends StatefulWidget {
 }
 
 class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
+  final MapController _mapController = MapController();
   int _currentIndex = 0;
   String _estadoCamion = "Disponible";
+  StreamSubscription<Position>? _positionStreamSubscription;
+  LatLng? _ubicacionActualCamion;
+  bool _rutaActiva = false;
+
+  // guarda el reporte que el chofer seleccionó para ir a atender
+  LatLng? _reporteDestinoVisual;
 
   final ChoferModeloVista _modeloVista = ChoferModeloVista();
-
-  // Instanciamos el repositorio y ViewModel para operar los reportes
   final ReporteRepositorio _reporteRepo = ReporteRepositorio();
   final ReporteModeloVista _reporteModelo = ReporteModeloVista();
-
   final TextEditingController _incidenciaController = TextEditingController();
 
   final int _idVehiculoAsignado = 1;
@@ -36,6 +42,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
 
   @override
   void dispose() {
+    _positionStreamSubscription?.cancel();
     _modeloVista.removeListener(_onViewModelChange);
     _reporteModelo.removeListener(_onReporteStateChange);
     _modeloVista.dispose();
@@ -54,8 +61,106 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
         ),
       );
     }
+
+    if (_modeloVista.estaTransmitiendo && !_rutaActiva) {
+      _iniciarRastreoGPS();
+    } else if (!_modeloVista.estaTransmitiendo && _rutaActiva) {
+      _detenerRastreoGPS();
+    }
+
     setState(() {
-      _estadoCamion = _modeloVista.estaTransmitiendo ? 'En Ruta' : 'Disponible';
+      if (_modeloVista.estaTransmitiendo) {
+        _estadoCamion = 'En Ruta';
+      } else if (_estadoCamion == 'En Ruta') {
+        _estadoCamion = 'Disponible';
+      }
+    });
+  }
+
+  /// Inicia el rastreo por GPS y vincula el movimiento del camión al mapa
+  Future<void> _iniciarRastreoGPS() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Se requieren permisos de ubicación para iniciar la ruta.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    setState(() {
+      _rutaActiva = true;
+    });
+
+    // ⚡ SOLUCIÓN DE INERCIA: Obtener posición actual INMEDIATAMENTE al oprimir el botón
+    // para que aparezca al instante en el mapa del ciudadano sin esperar a que avance 10 metros.
+    try {
+      Position posicionInicial = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      final coordenadaInicial = LatLng(
+        posicionInicial.latitude,
+        posicionInicial.longitude,
+      );
+
+      setState(() {
+        _ubicacionActualCamion = coordenadaInicial;
+      });
+      _mapController.move(coordenadaInicial, 16.0);
+
+      await _modeloVista.actualizarUbicacionVehiculo(
+        idVehiculo: _idVehiculoAsignado,
+        latitud: posicionInicial.latitude,
+        longitud: posicionInicial.longitude,
+      );
+    } catch (e) {
+      debugPrint("Aviso: Esperando señal del flujo de GPS continuo...");
+    }
+
+    // Escuchar el flujo de posiciones continuo por movimiento
+    _positionStreamSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 10,
+          ),
+        ).listen((Position position) {
+          final nuevaCoordenada = LatLng(position.latitude, position.longitude);
+
+          if (!mounted) return;
+          setState(() {
+            _ubicacionActualCamion = nuevaCoordenada;
+          });
+
+          if (_reporteDestinoVisual == null) {
+            _mapController.move(nuevaCoordenada, 16.0);
+          }
+
+          try {
+            _modeloVista.actualizarUbicacionVehiculo(
+              idVehiculo: _idVehiculoAsignado,
+              latitud: position.latitude,
+              longitud: position.longitude,
+            );
+          } catch (e) {
+            debugPrint("Error al enviar coordenadas: $e");
+          }
+        });
+  }
+
+  void _detenerRastreoGPS() {
+    _positionStreamSubscription?.cancel();
+    _positionStreamSubscription = null;
+    setState(() {
+      _rutaActiva = false;
+      _ubicacionActualCamion = null;
+      _reporteDestinoVisual = null;
     });
   }
 
@@ -83,7 +188,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
       _reporteModelo.resetearEstados();
       setState(() {
         _currentIndex = 0;
-      }); // Regresa al mapa principal de ruta
+      });
     }
   }
 
@@ -146,8 +251,12 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     return Stack(
       children: [
         FlutterMap(
+          mapController: _mapController,
           options: MapOptions(
-            initialCenter: _tantoyucaCentro,
+            initialCenter:
+                _reporteDestinoVisual ??
+                _ubicacionActualCamion ??
+                _tantoyucaCentro,
             initialZoom: 14.5,
           ),
           children: [
@@ -159,7 +268,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
             MarkerLayer(
               markers: [
                 Marker(
-                  point: _tantoyucaCentro,
+                  point: _ubicacionActualCamion ?? _tantoyucaCentro,
                   width: 50,
                   height: 50,
                   child: Container(
@@ -179,10 +288,38 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
                     ),
                   ),
                 ),
+                if (_reporteDestinoVisual != null)
+                  Marker(
+                    point: _reporteDestinoVisual!,
+                    width: 55,
+                    height: 55,
+                    child: const Icon(
+                      Icons.location_on,
+                      color: Colors.red,
+                      size: 45,
+                    ),
+                  ),
               ],
             ),
           ],
         ),
+        if (_reporteDestinoVisual != null)
+          Positioned(
+            top: 85,
+            right: 16,
+            child: FloatingActionButton.small(
+              backgroundColor: Colors.white,
+              onPressed: () {
+                setState(() {
+                  _reporteDestinoVisual = null;
+                });
+                if (_ubicacionActualCamion != null) {
+                  _mapController.move(_ubicacionActualCamion!, 16.0);
+                }
+              },
+              child: const Icon(Icons.layers_clear, color: Colors.red),
+            ),
+          ),
         Positioned(
           top: 16,
           left: 16,
@@ -222,10 +359,18 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
                         }).toList(),
                     onChanged: (String? newValue) {
                       if (newValue != null) {
-                        if (newValue == 'En Ruta' && !esRutaActiva) {
-                          _modeloVista.iniciarRuta(_idVehiculoAsignado);
-                        } else if (newValue != 'En Ruta' && esRutaActiva) {
-                          _modeloVista.detenerRuta();
+                        setState(() {
+                          _estadoCamion = newValue;
+                        }); // Permite actualizar el estado local inmediatamente
+                        if (newValue == 'En Ruta') {
+                          if (!esRutaActiva)
+                            _modeloVista.iniciarRuta(_idVehiculoAsignado);
+                        } else {
+                          // 🛠️ CORRECCIÓN: Detiene la ruta enviando el estado exacto seleccionado (Mantenimiento, etc.)
+                          _modeloVista.detenerRuta(
+                            _idVehiculoAsignado,
+                            estadoFinal: newValue,
+                          );
                         }
                       }
                     },
@@ -242,7 +387,10 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
           child: ElevatedButton.icon(
             onPressed: () {
               if (esRutaActiva) {
-                _modeloVista.detenerRuta();
+                _modeloVista.detenerRuta(
+                  _idVehiculoAsignado,
+                  estadoFinal: 'Disponible',
+                );
               } else {
                 _modeloVista.iniciarRuta(_idVehiculoAsignado);
               }
@@ -273,7 +421,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     );
   }
 
-  // 🔄 CONEXIÓN ASÍNCRONA REAL EN TIEMPO REAL CON LA LISTA DE REPORTES
   Widget _buildVerReportesSection() {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _reporteRepo.escucharReportesCiudadanos(),
@@ -369,48 +516,102 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
                       ),
                     ),
                     const Divider(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: esAtendido
-                          ? null
-                          : () async {
-                              try {
-                                await _reporteRepo.marcarReporteComoAtendido(
-                                  reporte['id_reporte'],
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Reporte actualizado a Atendido',
-                                    ),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Error al actualizar reporte',
-                                    ),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2E7D32),
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(45),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: esAtendido
+                                ? null
+                                : () {
+                                    final double lat =
+                                        (reporte['latitud'] as num).toDouble();
+                                    final double lng =
+                                        (reporte['longitud'] as num).toDouble();
+
+                                    setState(() {
+                                      _reporteDestinoVisual = LatLng(lat, lng);
+                                      _currentIndex = 0;
+                                    });
+
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                          _mapController.move(
+                                            _reporteDestinoVisual!,
+                                            16.0,
+                                          );
+                                        });
+                                  },
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.blue),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              minimumSize: const Size.fromHeight(45),
+                            ),
+                            icon: const Icon(Icons.map, color: Colors.blue),
+                            label: const Text(
+                              'VER EN MAPA',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                         ),
-                        elevation: 0,
-                      ),
-                      icon: const Icon(Icons.assignment_turned_in),
-                      label: Text(
-                        esAtendido
-                            ? 'REPORTE ATENDIDO'
-                            : 'MARCAR COMO ATENDIDO',
-                      ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: esAtendido
+                                ? null
+                                : () async {
+                                    try {
+                                      await _reporteRepo
+                                          .marcarReporteComoAtendido(
+                                            reporte['id_reporte'],
+                                          );
+                                      if (_reporteDestinoVisual?.latitude ==
+                                          reporte['latitud']) {
+                                        setState(() {
+                                          _reporteDestinoVisual = null;
+                                        });
+                                      }
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Reporte actualizado a Atendido',
+                                          ),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    } catch (e) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Error al actualizar reporte',
+                                          ),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2E7D32),
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(45),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              elevation: 0,
+                            ),
+                            icon: const Icon(Icons.assignment_turned_in),
+                            label: Text(esAtendido ? 'ATENDIDO' : 'RESOLVER'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -439,7 +640,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
           ),
           const SizedBox(height: 24),
           TextField(
-            controller: _incidenciaController, // Asignamos el controlador
+            controller: _incidenciaController,
             maxLines: 4,
             decoration: InputDecoration(
               hintText: 'Detalla la incidencia aquí...',
@@ -451,7 +652,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
           const SizedBox(height: 30),
           ElevatedButton.icon(
             onPressed: () {
-              // Disparamos inserción asíncrona de incidencias
               _reporteModelo.enviarIncidencia(
                 idVehiculo: _idVehiculoAsignado,
                 descripcion: _incidenciaController.text,
@@ -544,8 +744,12 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
           ),
           const Spacer(),
           OutlinedButton.icon(
+            // 🛠️ CORRECCIÓN: Se le añade el ID asignado para cumplir con el contrato del ViewModel
             onPressed: () {
-              _modeloVista.detenerRuta();
+              _modeloVista.detenerRuta(
+                _idVehiculoAsignado,
+                estadoFinal: 'Disponible',
+              );
               Navigator.pushReplacementNamed(context, '/login');
             },
             style: OutlinedButton.styleFrom(

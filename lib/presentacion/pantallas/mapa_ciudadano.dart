@@ -3,6 +3,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_application_camiones/presentacion/modelos_vista/ciudadano_modelo.dart';
 import 'package:flutter_application_camiones/presentacion/modelos_vista/reporte_modelo.dart';
+import 'package:flutter_application_camiones/datos/repositorios/reporte_repositorio.dart';
+import 'package:flutter_application_camiones/datos/repositorios/vehiculo_repositorio.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart' as image_picker;
 
@@ -16,6 +18,8 @@ class MapaCiudadanoScreen extends StatefulWidget {
 class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
   int _currentIndex = 0;
   final MapController _mapController = MapController();
+  final ReporteRepositorio _reporteRepo = ReporteRepositorio();
+  final VehiculoRepositorio _vehiculoRepo = VehiculoRepositorio();
 
   final CiudadanoModeloVista _modeloVista = CiudadanoModeloVista();
 
@@ -252,33 +256,186 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
             ),
           ),
         Positioned(
-          bottom: 20,
-          left: 20,
-          right: 20,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              if (!_modoSeleccionarCasa)
-                FloatingActionButton.extended(
-                  heroTag: 'btnCamiones',
-                  onPressed: () => _mostrarListaCamiones(context),
-                  backgroundColor: const Color(0xFF2E7D32),
-                  icon: const Icon(
-                    Icons.playlist_add_check,
-                    color: Colors.white,
-                  ),
-                  label: const Text(
-                    'Ver Camiones',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
+          top: 16,
+          left: 16,
+          right: 16,
+          child: StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _reporteRepo
+                .escucharIncidenciasActivas(), // Escuchando a Supabase
+            builder: (context, snapshot) {
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const SizedBox.shrink(); // Si no hay percances, no se dibuja nada (limpio)
+              }
+
+              final ultimaIncidencia = snapshot.data!.first;
+              final String descripcion =
+                  ultimaIncidencia['descripcion'] ?? 'Percance en ruta';
+              final int idVehiculo = ultimaIncidencia['id_vehiculo'] ?? 1;
+
+              // Tarjeta elegante de advertencia visual
+              return Card(
+                color: Colors.red[900], // Rojo preventivo
+                elevation: 6,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(14.0),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'ALERTA: Camión de Recolección #$idVehiculo',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              descripcion,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                                height: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.close,
+                          color: Colors.white54,
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          // Opcional: Podrías añadir lógica local (setState) para ocultar el banner temporalmente
+                        },
+                      ),
+                    ],
                   ),
                 ),
-            ],
+              );
+            },
           ),
         ),
       ],
+    );
+  }
+
+  void _mostrarMenuCamionesActivos(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Unidades en Servicio Actualmente',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2E7D32),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: _vehiculoRepo.escucharCamionesEnRuta(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF2E7D32),
+                          ),
+                        );
+                      }
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24.0),
+                          child: Center(
+                            child: Text(
+                              'No hay camiones recolectores en ruta por el momento.',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      final listaCamiones = snapshot.data!;
+
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: listaCamiones.length,
+                        itemBuilder: (context, index) {
+                          final camion = listaCamiones[index];
+                          return Card(
+                            margin: const EdgeInsets.symmetric(vertical: 6.0),
+                            child: ListTile(
+                              leading: const CircleAvatar(
+                                backgroundColor: Color(0xFFE8F5E9),
+                                child: Icon(
+                                  Icons.local_shipping,
+                                  color: Color(0xFF2E7D32),
+                                ),
+                              ),
+                              title: Text(
+                                'Camión Recolector #${camion['id_vehiculo']}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Text(
+                                'Placas: ${camion['placa'] ?? 'N/A'} — Estado: ${camion['estado']}',
+                              ),
+                              trailing: const Icon(
+                                Icons.gps_fixed,
+                                color: Colors.blue,
+                              ),
+                              onTap: () {
+                                // Enfoca la cámara del mapa ciudadano sobre el camión seleccionado
+                                final double lat = (camion['latitud'] as num)
+                                    .toDouble();
+                                final double lng = (camion['longitud'] as num)
+                                    .toDouble();
+                                _mapController.move(LatLng(lat, lng), 16.0);
+                                Navigator.pop(
+                                  context,
+                                ); // Cierra el menú inferior
+                              },
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

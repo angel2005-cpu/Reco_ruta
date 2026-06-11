@@ -28,4 +28,24 @@ class VehiculoRepositorio {
   Stream<List<Map<String, dynamic>>> escucharCamionesEnTiempoReal() {
     return _supabase.from('vehiculos').stream(primaryKey: ['id_vehiculo']);
   }
+
+  Future<void> actualizarEstadoVehiculo({
+    required int idVehiculo,
+    required String nuevoEstado,
+  }) async {
+    await _supabase
+        .from('vehiculos')
+        .update({'estado': nuevoEstado})
+        .eq('id_vehiculo', idVehiculo);
+  }
+
+  Stream<List<Map<String, dynamic>>> escucharCamionesEnRuta() {
+    return _supabase
+        .from('vehiculos')
+        .stream(primaryKey: ['id_vehiculo'])
+        .eq(
+          'estado',
+          'En Ruta',
+        ); // Filtrado estricto: solo los que estén trabajando
+  }
 }

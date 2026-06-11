@@ -84,4 +84,13 @@ class ReporteRepositorio {
       throw Exception('Error al registrar la incidencia: $e');
     }
   }
+
+  // escuchar incidencias del camion
+  Stream<List<Map<String, dynamic>>> escucharIncidenciasActivas() {
+    return _supabase
+        .from('incidencias') // nombre de la tabla
+        .stream(primaryKey: ['id_incidencia'])
+        .order('creado_en', ascending: false) // Trae la más reciente primero
+        .limit(1); // Solo nos interesa la última alerta activa
+  }
 }

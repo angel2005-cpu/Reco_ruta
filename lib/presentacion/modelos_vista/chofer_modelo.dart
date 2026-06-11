@@ -15,11 +15,10 @@ class ChoferModeloVista extends ChangeNotifier {
   String? _mensajeError;
   String? get mensajeError => _mensajeError;
 
-  /// 🟢 Inicia el rastreo del camión en tiempo real
+  /// Inicia el estado de la ruta (Valida hardware y activa bandera de transmisión)
   Future<void> iniciarRuta(int idVehiculo) async {
     _mensajeError = null;
 
-    // 1. Validar permisos mínimos del hardware del GPS
     bool servicioHabilitado = await Geolocator.isLocationServiceEnabled();
     if (!servicioHabilitado) {
       _mensajeError = 'El GPS está apagado. Por favor, enciéndelo.';
@@ -35,47 +34,52 @@ class ChoferModeloVista extends ChangeNotifier {
       return;
     }
 
-    // 2. Cambiar estado a transmitiendo
+    // Cambiar estado a transmitiendo para que la vista encienda su rastreador gráfico
     _estaTransmitiendo = true;
     notifyListeners();
-
-    // Configuración del GPS: Alta precisión y actualiza cada 10 metros de movimiento
-    const LocationSettings settings = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 10,
-    );
-
-    // 3. Empezar a escuchar el flujo del GPS
-    _gpsSubscription = Geolocator.getPositionStream(locationSettings: settings)
-        .listen(
-          (Position posicion) async {
-            try {
-              // Enviamos las coordenadas directo a Supabase
-              await _vehiculoRepo.actualizarUbicacionCamion(
-                idVehiculo: idVehiculo,
-                latitud: posicion.latitude,
-                longitud: posicion.longitude,
-              );
-              print(
-                'Ubicación actualizada: ${posicion.latitude}, ${posicion.longitude}',
-              );
-            } catch (e) {
-              _mensajeError = 'Error de conexión con el servidor.';
-              notifyListeners();
-            }
-          },
-          onError: (error) {
-            _mensajeError = 'Error en el flujo del GPS.';
-            detenerRuta();
-          },
-        );
   }
 
-  /// 🔴 Detiene el rastreo y cierra el flujo para ahorrar batería
-  void detenerRuta() {
+  /// MÉTODO AGREGADO: Sincroniza las coordenadas dinámicas con Supabase
+  Future<void> actualizarUbicacionVehiculo({
+    required int idVehiculo,
+    required double latitud,
+    required double longitud,
+  }) async {
+    try {
+      // Consumimos el método de tu repositorio de vehículos
+      await _vehiculoRepo.actualizarUbicacionCamion(
+        idVehiculo: idVehiculo,
+        latitud: latitud,
+        longitud: longitud,
+      );
+
+      _mensajeError = null;
+    } catch (e) {
+      _mensajeError =
+          'Error de conexión: No se pudo actualizar la ruta en el servidor.';
+      notifyListeners();
+    }
+  }
+
+  /// Detiene el rastreo y cierra el flujo para ahorrar batería
+  Future<void> detenerRuta(
+    int idVehiculo, {
+    String estadoFinal = 'Disponible',
+  }) async {
     _gpsSubscription?.cancel();
     _gpsSubscription = null;
     _estaTransmitiendo = false;
+
+    try {
+      // 📡 AVISO GLOBAL: Libera el camión en Supabase
+      await _vehiculoRepo.actualizarEstadoVehiculo(
+        idVehiculo: idVehiculo,
+        nuevoEstado: estadoFinal,
+      );
+      _mensajeError = null;
+    } catch (e) {
+      _mensajeError = 'Error al guardar estado final en el servidor.';
+    }
     notifyListeners();
   }
 

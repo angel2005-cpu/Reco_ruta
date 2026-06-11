@@ -30,14 +30,14 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
 
   final LatLng _tantoyucaCentro = const LatLng(21.3510, -98.2285);
 
-  // Control dinámico de hogar desde Supabase
+  // Estado de ubicación residencial de Supabase
   LatLng? _ubicacionCasaUsuario;
   int? _idUsuarioInterno;
   bool _cargandoCasa = true;
   bool _tieneCasaRegistrada =
-      false; // bandera de control para limpiar el centro del mapa
+      false; // 🏠 Control de visualización del pin residencial
 
-  // Coordenadas manuales elegidas por el usuario para su reporte
+  // Coordenadas seleccionadas interactivamente para el reporte
   LatLng? _coordenadasReporte;
   File? _imagenSeleccionada;
 
@@ -54,7 +54,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
     super.dispose();
   }
 
-  /// 🛰️ Consulta la cuenta del usuario para extraer el ID y su hogar si existe
+  /// 🛰️ Descarga las credenciales y el domicilio del ciudadano logueado
   Future<void> _cargarDomicilioDesdeSupabase() async {
     try {
       final usuarioLogueado = Supabase.instance.client.auth.currentUser;
@@ -68,13 +68,20 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
         if (datosFila != null) {
           setState(() {
             _idUsuarioInterno = datosFila['id_usuario'] as int?;
-            if (datosFila['latitud_casa'] != null &&
-                datosFila['longitud_casa'] != null) {
-              _ubicacionCasaUsuario = LatLng(
-                (datosFila['latitud_casa'] as num).toDouble(),
-                (datosFila['longitud_casa'] as num).toDouble(),
-              );
-              _tieneCasaRegistrada = true; // Solo activamos si hay datos reales
+            final double? lat = datosFila['latitud_casa'] != null
+                ? (datosFila['latitud_casa'] as num).toDouble()
+                : null;
+            final double? lng = datosFila['longitud_casa'] != null
+                ? (datosFila['longitud_casa'] as num).toDouble()
+                : null;
+
+            if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+              _ubicacionCasaUsuario = LatLng(lat, lng);
+              _tieneCasaRegistrada =
+                  true; // Solo se activa si las coordenadas no son nulas ni ceros
+            } else {
+              _ubicacionCasaUsuario = _tantoyucaCentro;
+              _tieneCasaRegistrada = false;
             }
             _cargandoCasa = false;
           });
@@ -82,18 +89,18 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
         }
       }
     } catch (e) {
-      debugPrint("Error al mapear credenciales desde Supabase: $e");
+      debugPrint("Error al consultar datos residenciales en Supabase: $e");
     }
 
     setState(() {
       _idUsuarioInterno = 1;
       _ubicacionCasaUsuario = _tantoyucaCentro;
-      _tieneCasaRegistrada = false; // Desactivado si falla o no tiene registro
+      _tieneCasaRegistrada = false;
       _cargandoCasa = false;
     });
   }
 
-  /// 📐 Geometría esférica de Haversine para la métrica crítica de 100m
+  /// 📐 Fórmula de Haversine local (Métrica rigurosa de 100 metros)
   double _calcularHaversineLocal(
     double lat1,
     double lon1,
@@ -127,48 +134,6 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
     }
   }
 
-  /// ✨ Disparador asíncronico para enviar el reporte con el ID correcto de usuario
-  Future<void> _procesarEnvioReporte() async {
-    if (_descripcionController.text.trim().isEmpty ||
-        _coordenadasReporte == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Por favor, escribe una descripción y toca el mapa para fijar el lugar.',
-          ),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-    try {
-      await _reporteRepo.crearReporteCiudadano(
-        idUsuario: _idUsuarioInterno ?? 1,
-        descripcion: _descripcionController.text.trim(),
-        latitud: _coordenadasReporte!.latitude,
-        longitud: _coordenadasReporte!.longitude,
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('¡Reporte enviado con éxito a la central!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      _descripcionController.clear();
-      setState(() {
-        _imagenSeleccionada = null;
-        _coordenadasReporte = null;
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error al guardar reporte en Supabase'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_cargandoCasa) {
@@ -178,9 +143,9 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               CircularProgressIndicator(color: Color(0xFF2E7D32)),
-              SizedBox(height: 18),
+              SizedBox(height: 16),
               Text(
-                'Sincronizando entorno de mapas...',
+                'Cargando mapa de Tantoyuca...',
                 style: TextStyle(
                   color: Colors.grey,
                   fontWeight: FontWeight.w500,
@@ -192,6 +157,13 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
       );
     }
 
+    // Estructura original de secciones independientes por pestaña
+    final List<Widget> sections = [
+      _buildMapaSection(),
+      _buildReportarSection(),
+      _buildPerfilSection(),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -202,169 +174,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: Stack(
-        children: [
-          // 🗺️ CAPA BASE: El mapa se mantiene fijo de fondo (Evita parpadeos y destrucción)
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _ubicacionCasaUsuario ?? _tantoyucaCentro,
-              initialZoom: 15.0,
-              onTap: (tapPosition, point) {
-                // 📍 SELECCIÓN MANUAL ANTIGUA: Al hacer tap se actualiza el pin del reporte
-                setState(() {
-                  _coordenadasReporte = point;
-                });
-                if (_currentIndex == 1) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        '📍 Punto geográfico del percance marcado.',
-                      ),
-                    ),
-                  );
-                }
-              },
-            ),
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.recoruta.app',
-              ),
-
-              // 🚚 FLUJO REACTIVO EXCLUSIVO DE MARCADORES (Garantiza visualización de camiones)
-              StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _vehiculoRepo.escucharCamionesEnRuta(),
-                builder: (context, snapshot) {
-                  final camionesActivos = snapshot.data ?? [];
-                  List<Marker> marcadoresRender = [];
-
-                  // 🏠 Dibuja la casa del ciudadano ÚNICAMENTE si está validada en la BD
-                  if (_tieneCasaRegistrada && _ubicacionCasaUsuario != null) {
-                    marcadoresRender.add(
-                      Marker(
-                        point: _ubicacionCasaUsuario!,
-                        width: 50,
-                        height: 50,
-                        child: const Icon(
-                          Icons.home,
-                          color: Colors.blueAccent,
-                          size: 38,
-                        ),
-                      ),
-                    );
-                  }
-
-                  // 🚨 Dibuja el Pin Rojo del Reporte Manual si el usuario ya tocó el mapa
-                  if (_coordenadasReporte != null) {
-                    marcadoresRender.add(
-                      Marker(
-                        point: _coordenadasReporte!,
-                        width: 50,
-                        height: 50,
-                        child: const Icon(
-                          Icons.location_on,
-                          color: Colors.red,
-                          size: 42,
-                        ),
-                      ),
-                    );
-                  }
-
-                  // Recorremos y calculamos distancias para las alertas
-                  double distanciaMinima = double.infinity;
-                  Map<String, dynamic>? camionMasCercano;
-
-                  for (var camion in camionesActivos) {
-                    final double lat = (camion['latitud'] as num).toDouble();
-                    final double lng = (camion['longitud'] as num).toDouble();
-                    final LatLng posicionCamion = LatLng(lat, lng);
-
-                    if (_tieneCasaRegistrada && _ubicacionCasaUsuario != null) {
-                      final double dist = _calcularHaversineLocal(
-                        _ubicacionCasaUsuario!.latitude,
-                        _ubicacionCasaUsuario!.longitude,
-                        lat,
-                        lng,
-                      );
-                      if (dist < distanciaMinima) {
-                        distanciaMinima = dist;
-                        camionMasCercano = camion;
-                      }
-                    }
-
-                    // Añadir icono verde flotante del camión recolector
-                    marcadoresRender.add(
-                      Marker(
-                        point: posicionCamion,
-                        width: 50,
-                        height: 50,
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(color: Colors.black26, blurRadius: 6),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.local_shipping,
-                            color: Color(0xFF2E7D32),
-                            size: 28,
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-
-                  return Stack(
-                    children: [
-                      MarkerLayer(markers: marcadoresRender),
-
-                      // 🔔 Notificación a los 100 metros dinámicos
-                      if (distanciaMinima <= 100 && camionMasCercano != null)
-                        _buildAlertaProximidadFlotante(
-                          idVehiculo: camionMasCercano!['id_vehiculo'],
-                          distancia: distanciaMinima.toInt(),
-                        ),
-                    ],
-                  );
-                },
-              ),
-            ],
-          ),
-
-          // 🎛️ CAPAS ADICIONALES SUPERPUESTAS DEPENDIENDO DE LA PESTAÑA ACTIVA
-          if (_currentIndex == 0) ...[
-            _buildIncidenciasStreamBanner(),
-            Positioned(
-              bottom: 24,
-              right: 16,
-              child: FloatingActionButton.extended(
-                heroTag: 'fab_camiones_online',
-                backgroundColor: const Color(0xFF2E7D32),
-                foregroundColor: Colors.white,
-                icon: const Icon(Icons.commute),
-                label: const Text(
-                  'Camiones Activos',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                onPressed: () => _mostrarPanelCamiones(context),
-              ),
-            ),
-          ],
-
-          if (_currentIndex == 1)
-            _buildFormularioReporteTarjeta(), // 📝 Panel flotante sobre el mapa para selección manual
-
-          if (_currentIndex == 2)
-            Container(
-              color: Colors.white,
-              child: _buildPerfilSection(),
-            ), // Panel limpio de perfil
-        ],
-      ),
+      body: IndexedStack(index: _currentIndex, children: sections),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() {
@@ -385,103 +195,186 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
     );
   }
 
-  /// 📝 Formulario Flotante que permite visualizar el mapa al mismo tiempo para tocar y seleccionar
-  Widget _buildFormularioReporteTarjeta() {
-    return Positioned(
-      left: 16,
-      right: 16,
-      bottom: 20,
-      child: Card(
-        elevation: 8,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Generar Reporte de Basura o Vialidad',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2E7D32),
-                ),
-              ),
-              const SizedBox(height: 2),
-              const Text(
-                '📍 Toca cualquier parte del mapa para fijar el lugar exacto.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.blueGrey,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              if (_coordenadasReporte != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Punto seleccionado: (${_coordenadasReporte!.latitude.toStringAsFixed(5)}, ${_coordenadasReporte!.longitude.toStringAsFixed(5)})',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey,
-                    fontStyle: FontStyle.italic,
+  /// 🗺️ PESTAÑA 0: Sección Monitoreo (Mapa Completo con capa Realtime aislada)
+  Widget _buildMapaSection() {
+    final LatLng centroMapa = _ubicacionCasaUsuario ?? _tantoyucaCentro;
+
+    return Stack(
+      children: [
+        // El mapa base se renderiza de forma estática en el fondo para preservar la cámara al mover o hacer zoom
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: centroMapa,
+            initialZoom: 15.0,
+            onTap: (tapPosition, point) {
+              // 📍 SELECCIÓN MANUAL ORIGINAL: Al tocar cualquier calle se actualiza el punto geográfico
+              setState(() {
+                _coordenadasReporte = point;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '📍 Punto marcado: ${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)}. Pasa a la pestaña "Reportar".',
                   ),
+                  duration: const Duration(seconds: 3),
                 ),
-              ],
-              const SizedBox(height: 10),
-              TextField(
-                controller: _descripcionController,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  hintText: 'Describe el problema vial o desperdicios aquí...',
-                  isDense: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _capturarEvidencia,
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      icon: const Icon(Icons.camera_alt, size: 18),
-                      label: Text(
-                        _imagenSeleccionada != null
-                            ? 'Foto Adjunta ✓'
-                            : 'Evidencia',
+              );
+            },
+          ),
+          children: [
+            TileLayer(
+              urlTemplate:
+                  'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.recoruta.app',
+            ),
+
+            // 🚚 CAPA EXCLUSIVA DE MARCADORES: Solo esta capa se redibuja con Supabase Realtime
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _vehiculoRepo.escucharCamionesEnRuta(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  debugPrint(
+                    "Error crítico en stream de camiones: ${snapshot.error}",
+                  );
+                }
+
+                final camionesActivos = snapshot.data ?? [];
+                List<Marker> marcadoresRender = [];
+
+                // 1. Añadimos la casa SÓLO si tiene coordenadas reales registradas en Supabase
+                if (_tieneCasaRegistrada && _ubicacionCasaUsuario != null) {
+                  marcadoresRender.add(
+                    Marker(
+                      point: _ubicacionCasaUsuario!,
+                      width: 50,
+                      height: 50,
+                      child: const Icon(
+                        Icons.home,
+                        color: Colors.blueAccent,
+                        size: 38,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _procesarEnvioReporte,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2E7D32),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text(
-                        'ENVIAR REPORTE',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                  );
+                }
+
+                // 2. Añadimos el Pin Rojo del reporte si el usuario ya tocó el mapa
+                if (_coordenadasReporte != null) {
+                  marcadoresRender.add(
+                    Marker(
+                      point: _coordenadasReporte!,
+                      width: 50,
+                      height: 50,
+                      child: const Icon(
+                        Icons.location_on,
+                        color: Colors.red,
+                        size: 42,
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  );
+                }
+
+                // 3. Añadimos los camiones activos controlando estrictamente datos nulos
+                for (var camion in camionesActivos) {
+                  if (camion['latitud'] == null || camion['longitud'] == null)
+                    continue;
+
+                  final double lat = (camion['latitud'] as num).toDouble();
+                  final double lng = (camion['longitud'] as num).toDouble();
+
+                  marcadoresRender.add(
+                    Marker(
+                      point: LatLng(lat, lng),
+                      width: 50,
+                      height: 50,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(color: Colors.black26, blurRadius: 6),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.local_shipping,
+                          color: Color(0xFF2E7D32),
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                return MarkerLayer(markers: marcadoresRender);
+              },
+            ),
+          ],
+        ),
+
+        // 🔔 ALERTA DE PROXIMIDAD INMEDIATA (100 METROS)
+        // Usa su propio StreamBuilder flotante para no interferir con las operaciones de la cámara del mapa
+        StreamBuilder<List<Map<String, dynamic>>>(
+          stream: _vehiculoRepo.escucharCamionesEnRuta(),
+          builder: (context, snapshot) {
+            final camiones = snapshot.data ?? [];
+            if (camiones.isEmpty ||
+                !_tieneCasaRegistrada ||
+                _ubicacionCasaUsuario == null) {
+              return const SizedBox.shrink();
+            }
+
+            double distanciaMinima = double.infinity;
+            Map<String, dynamic>? camionMasCercano;
+
+            for (var camion in camiones) {
+              if (camion['latitud'] == null || camion['longitud'] == null)
+                continue;
+              final double lat = (camion['latitud'] as num).toDouble();
+              final double lng = (camion['longitud'] as num).toDouble();
+
+              final double dist = _calcularHaversineLocal(
+                _ubicacionCasaUsuario!.latitude,
+                _ubicacionCasaUsuario!.longitude,
+                lat,
+                lng,
+              );
+
+              if (dist < distanciaMinima) {
+                distanciaMinima = dist;
+                camionMasCercano = camion;
+              }
+            }
+
+            if (distanciaMinima <= 100 && camionMasCercano != null) {
+              return _buildAlertaProximidadFlotante(
+                idVehiculo: camionMasCercano['id_vehiculo'],
+                distancia: distanciaMinima.toInt(),
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+
+        // 🚨 BANNER DE INCIDENCIAS MECÁNICAS O DE TRÁFICO
+        _buildIncidenciasStreamBanner(),
+
+        // 📋 BOTÓN PARA DESPLEGAR PANEL DE UNIDADES ONLINE
+        Positioned(
+          bottom: 24,
+          right: 16,
+          child: FloatingActionButton.extended(
+            heroTag: 'fab_camiones_online',
+            backgroundColor: const Color(0xFF2E7D32),
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.commute),
+            label: const Text(
+              'Camiones Activos',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            onPressed: () => _mostrarPanelCamiones(context),
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -527,7 +420,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
                       ),
                     ),
                     Text(
-                      'La unidad #$idVehiculo está a solo $distancia metros de tu domicilio registrado. ¡Saca tus contenedores!',
+                      'La unidad #$idVehiculo está a solo $distancia metros de tu domicilio. ¡Saca tus contenedores!',
                       style: const TextStyle(fontSize: 12, height: 1.2),
                     ),
                   ],
@@ -553,7 +446,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
 
           final ultimaIncidencia = snapshot.data!.first;
           final String desc =
-              ultimaIncidencia['descripcion'] ?? 'Fallo mecánico';
+              ultimaIncidencia['descripcion'] ?? 'Percance en la vialidad';
           final int idVehiculo = ultimaIncidencia['id_vehiculo'] ?? 1;
 
           return Card(
@@ -587,12 +480,184 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
     );
   }
 
+  /// 📝 PESTAÑA 1: Interfaz Original de Envío de Reportes
+  Widget _buildReportarSection() {
+    return Scaffold(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Generar Reporte Ciudadano',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF2E7D32),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Describe el desperfecto o problema con la ruta de recolección.',
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+            ),
+            const SizedBox(height: 20),
+
+            // Indicador de estado geográfico del pin seleccionado
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _coordenadasReporte == null
+                    ? Colors.amber[50]
+                    : Colors.blue[50],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _coordenadasReporte == null
+                      ? Colors.amber
+                      : Colors.blue,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _coordenadasReporte == null
+                        ? Icons.info_outline
+                        : Icons.check_circle_outline,
+                    color: _coordenadasReporte == null
+                        ? Colors.orange[800]
+                        : Colors.blue[800],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _coordenadasReporte == null
+                          ? 'Falta seleccionar ubicación. Ve a la pestaña Monitoreo y toca el mapa.'
+                          : 'Ubicación fijada: (${_coordenadasReporte!.latitude.toStringAsFixed(5)}, ${_coordenadasReporte!.longitude.toStringAsFixed(5)})',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: _coordenadasReporte == null
+                            ? Colors.orange[900]
+                            : Colors.blue[900],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            TextField(
+              controller: _descripcionController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText:
+                    'Escribe detalladamente las observaciones aquí (ej. Contenedores desbordados, camión omitió la calle)...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            OutlinedButton.icon(
+              onPressed: _capturarEvidencia,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              icon: const Icon(Icons.camera_alt, color: Colors.blueGrey),
+              label: Text(
+                _imagenSeleccionada != null
+                    ? 'Evidencia Adjuntada ✓'
+                    : 'Tomar Foto de Evidencia',
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(height: 35),
+
+            ElevatedButton(
+              onPressed: () async {
+                if (_descripcionController.text.trim().isEmpty ||
+                    _coordenadasReporte == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Por favor, ingresa la descripción y marca un punto en el mapa.',
+                      ),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                try {
+                  await _reporteRepo.crearReporteCiudadano(
+                    idUsuario: _idUsuarioInterno ?? 1,
+                    descripcion: _descripcionController.text.trim(),
+                    latitud: _coordenadasReporte!.latitude,
+                    longitud: _coordenadasReporte!.longitude,
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        '¡Reporte enviado exitosamente a la central!',
+                      ),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                  _descripcionController.clear();
+                  setState(() {
+                    _imagenSeleccionada = null;
+                    _coordenadasReporte = null;
+                  });
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Error al transmitir el reporte a Supabase',
+                      ),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 2,
+              ),
+              child: const Text(
+                'ENVIAR REPORTE CIUDADANO',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 👤 PESTAÑA 2: Sección Perfil
   Widget _buildPerfilSection() {
     return Padding(
       padding: const EdgeInsets.all(24.0),
       child: Column(
         children: [
-          const SizedBox(height: 40),
+          const SizedBox(height: 30),
           CircleAvatar(
             radius: 50,
             backgroundColor: Colors.grey[200],

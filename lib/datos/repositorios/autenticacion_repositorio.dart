@@ -41,23 +41,23 @@ class AutenticacionRepositorio {
   }
 
   /// 🔑 LOGIN: Valida las credenciales y devuelve el rol del usuario
-  Future<String> iniciarSesion({
+  Future<Map<String, dynamic>> iniciarSesion({
     required String usuario,
     required String password,
   }) async {
     try {
-      // Consultamos la tabla 'usuarios' buscando coincidencia exacta
       final List<Map<String, dynamic>> respuesta = await _supabase
           .from('usuarios')
-          .select('rol')
+          .select('id_usuario, rol') // ← agrega id_usuario
           .eq('usuario', usuario)
           .eq('contrasena', password);
 
       if (respuesta.isNotEmpty) {
-        // Si hay coincidencia, retornamos su rol ('ciudadano' o 'chofer')
-        return respuesta.first['rol'] as String;
+        return {
+          'rol': respuesta.first['rol'] as String,
+          'id_usuario': respuesta.first['id_usuario'] as int,
+        };
       } else {
-        // Si la lista regresa vacía, es porque los datos no coinciden
         throw Exception('Usuario o contraseña incorrectos.');
       }
     } catch (e) {

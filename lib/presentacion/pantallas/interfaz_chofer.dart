@@ -8,7 +8,8 @@ import 'package:flutter_application_camiones/presentacion/modelos_vista/reporte_
 import 'package:flutter_application_camiones/datos/repositorios/reporte_repositorio.dart';
 
 class InterfazChoferScreen extends StatefulWidget {
-  const InterfazChoferScreen({super.key});
+  final int idUsuario;
+  const InterfazChoferScreen({super.key, required this.idUsuario});
 
   @override
   State<InterfazChoferScreen> createState() => _InterfazChoferScreenState();
@@ -30,7 +31,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
   final ReporteModeloVista _reporteModelo = ReporteModeloVista();
   final TextEditingController _incidenciaController = TextEditingController();
 
-  final int _idVehiculoAsignado = 1;
   final LatLng _tantoyucaCentro = const LatLng(21.3510, -98.2285);
 
   @override
@@ -115,7 +115,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
       _mapController.move(coordenadaInicial, 16.0);
 
       await _modeloVista.actualizarUbicacionVehiculo(
-        idVehiculo: _idVehiculoAsignado,
+        idVehiculo: widget.idUsuario,
         latitud: posicionInicial.latitude,
         longitud: posicionInicial.longitude,
       );
@@ -144,7 +144,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
 
           try {
             _modeloVista.actualizarUbicacionVehiculo(
-              idVehiculo: _idVehiculoAsignado,
+              idVehiculo: widget.idUsuario,
               latitud: position.latitude,
               longitud: position.longitude,
             );
@@ -364,11 +364,11 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
                         }); // Permite actualizar el estado local inmediatamente
                         if (newValue == 'En Ruta') {
                           if (!esRutaActiva)
-                            _modeloVista.iniciarRuta(_idVehiculoAsignado);
+                            _modeloVista.iniciarRuta(widget.idUsuario);
                         } else {
                           // 🛠️ CORRECCIÓN: Detiene la ruta enviando el estado exacto seleccionado (Mantenimiento, etc.)
                           _modeloVista.detenerRuta(
-                            _idVehiculoAsignado,
+                            widget.idUsuario,
                             estadoFinal: newValue,
                           );
                         }
@@ -388,11 +388,11 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
             onPressed: () {
               if (esRutaActiva) {
                 _modeloVista.detenerRuta(
-                  _idVehiculoAsignado,
+                  widget.idUsuario,
                   estadoFinal: 'Disponible',
                 );
               } else {
-                _modeloVista.iniciarRuta(_idVehiculoAsignado);
+                _modeloVista.iniciarRuta(widget.idUsuario);
               }
             },
             style: ElevatedButton.styleFrom(
@@ -653,7 +653,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
           ElevatedButton.icon(
             onPressed: () {
               _reporteModelo.enviarIncidencia(
-                idVehiculo: _idVehiculoAsignado,
+                idVehiculo: widget.idUsuario,
                 descripcion: _incidenciaController.text,
               );
             },
@@ -747,7 +747,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
             // 🛠️ CORRECCIÓN: Se le añade el ID asignado para cumplir con el contrato del ViewModel
             onPressed: () {
               _modeloVista.detenerRuta(
-                _idVehiculoAsignado,
+                widget.idUsuario,
                 estadoFinal: 'Disponible',
               );
               Navigator.pushReplacementNamed(context, '/login');

@@ -68,9 +68,10 @@ class _LoginPantallaState extends State<LoginPantalla> {
       _modeloVista.limpiarDatos(); // Limpiamos para mantener la seguridad
 
       if (rol == 'chofer') {
-        Navigator.pushReplacement(
+        Navigator.pushReplacementNamed(
           context,
-          MaterialPageRoute(builder: (context) => const InterfazChoferScreen()),
+          '/interfaz_chofer',
+          arguments: _modeloVista.idUsuario, // ← pasa el id del usuario
         );
       } else {
         Navigator.pushReplacement(

@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_camiones/datos/repositorios/vehiculo_repositorio.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:flutter_application_camiones/datos/utilidades/calculadora_distancia.dart';
+import 'package:flutter_application_camiones/datos/utilidades/notificacion_servicio.dart';
 
 class CiudadanoModeloVista extends ChangeNotifier {
   final VehiculoRepositorio _vehiculoRepo = VehiculoRepositorio();
@@ -105,6 +107,31 @@ class CiudadanoModeloVista extends ChangeNotifier {
     } finally {
       _cargando = false;
       notifyListeners();
+    }
+  }
+
+  void verificarProximidad({
+    required List<Map<String, dynamic>> camiones,
+    required double casaLatitud,
+    required double casaLongitud,
+    required int idUsuario,
+  }) {
+    const double umbralMetros = 100.0;
+
+    for (final camion in camiones) {
+      if (camion['estado'] != 'En Ruta') continue;
+
+      final double distancia = CalculadoraDistancia.calcularHaversine(
+        lat1: casaLatitud,
+        lon1: casaLongitud,
+        lat2: (camion['latitud'] as num).toDouble(),
+        lon2: (camion['longitud'] as num).toDouble(),
+      );
+
+      if (distancia <= umbralMetros) {
+        NotificacionServicio.notificarCamionCerca(idUsuario: idUsuario);
+        break;
+      }
     }
   }
 }

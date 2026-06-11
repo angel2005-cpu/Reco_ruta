@@ -12,6 +12,8 @@ class LoginModeloVista extends ChangeNotifier {
 
   String? _rolUsuario;
   String? get rolUsuario => _rolUsuario;
+  int? _idUsuario;
+  int? get idUsuario => _idUsuario;
 
   /// Ejecuta la validación lógica del Login
   Future<void> ejecutarLogin({
@@ -27,13 +29,13 @@ class LoginModeloVista extends ChangeNotifier {
     _actualizarEstado(cargando: true, error: null);
 
     try {
-      // Mandamos a pedir el rol al repositorio
-      final String rol = await _authRepository.iniciarSesion(
+      final resultado = await _authRepository.iniciarSesion(
         usuario: usuario.trim(),
         password: password,
       );
 
-      _rolUsuario = rol;
+      _rolUsuario = resultado['rol'];
+      _idUsuario = resultado['id_usuario'];
       _actualizarEstado(cargando: false);
     } catch (e) {
       _actualizarEstado(cargando: false, error: e.toString());

@@ -1,13 +1,14 @@
+import 'package:flutter_application_camiones/datos/utilidades/notificacion_servicio.dart';
 import 'package:flutter/material.dart';
 import 'presentacion/pantallas/mapa_ciudadano.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'presentacion/pantallas/interfaz_chofer.dart';
 import 'presentacion/pantallas/login_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  Supabase.initialize(
+  await NotificacionServicio.inicializar();
+  await Supabase.initialize(
     url: 'https://tpmcbexsogdsgnpuubam.supabase.co',
     anonKey: 'sb_publishable__5SmP_j0ooEggOvtZ7wQdw_KRpox71e',
   );
@@ -32,7 +33,11 @@ class MyApp extends StatelessWidget {
       routes: {
         '/login': (context) => const LoginPantalla(),
         '/mapa_ciudadano': (context) => const MapaCiudadanoScreen(),
-        '/interfaz_chofer': (context) => const InterfazChoferScreen(),
+        '/interfaz_chofer': (context) {
+          final int idUsuario =
+              ModalRoute.of(context)?.settings.arguments as int? ?? 0;
+          return InterfazChoferScreen(idUsuario: idUsuario);
+        },
       },
     );
   }

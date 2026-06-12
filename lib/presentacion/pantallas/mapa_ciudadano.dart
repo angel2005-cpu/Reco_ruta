@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_camiones/datos/repositorios/perfil_repositorio.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart' as image_picker;
@@ -12,7 +13,8 @@ import 'package:flutter_application_camiones/datos/repositorios/reporte_reposito
 import 'package:flutter_application_camiones/datos/repositorios/vehiculo_repositorio.dart';
 
 class MapaCiudadanoScreen extends StatefulWidget {
-  const MapaCiudadanoScreen({super.key});
+  const MapaCiudadanoScreen({super.key, required this.idUsuario});
+  final int idUsuario;
 
   @override
   State<MapaCiudadanoScreen> createState() => _MapaCiudadanoScreenState();
@@ -27,6 +29,8 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
   final CiudadanoModeloVista _modeloVista = CiudadanoModeloVista();
   final ReporteModeloVista _reporteModelo = ReporteModeloVista();
   final TextEditingController _descripcionController = TextEditingController();
+  final PerfilRepositorio _perfilRepo = PerfilRepositorio();
+  Map<String, dynamic>? _perfilCiudadano;
 
   final LatLng _tantoyucaCentro = const LatLng(21.3510, -98.2285);
 
@@ -35,7 +39,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
   int? _idUsuarioInterno;
   bool _cargandoCasa = true;
   bool _tieneCasaRegistrada =
-      false; // 🏠 Control de visualización del pin residencial
+      false; // Control de visualización del pin residencial
 
   // Coordenadas seleccionadas interactivamente para el reporte
   LatLng? _coordenadasReporte;
@@ -54,53 +58,51 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
     super.dispose();
   }
 
-  /// 🛰️ Descarga las credenciales y el domicilio del ciudadano logueado
+  /// Descarga las credenciales y el domicilio del ciudadano logueado
   Future<void> _cargarDomicilioDesdeSupabase() async {
     try {
-      final usuarioLogueado = Supabase.instance.client.auth.currentUser;
-      if (usuarioLogueado != null && usuarioLogueado.email != null) {
-        final datosFila = await Supabase.instance.client
-            .from('usuarios')
-            .select('id_usuario, latitud_casa, longitud_casa')
-            .eq('correo', usuarioLogueado.email!)
-            .maybeSingle();
+      _idUsuarioInterno = widget.idUsuario; // ← directo, sin consulta extra
 
-        if (datosFila != null) {
-          setState(() {
-            _idUsuarioInterno = datosFila['id_usuario'] as int?;
-            final double? lat = datosFila['latitud_casa'] != null
-                ? (datosFila['latitud_casa'] as num).toDouble()
-                : null;
-            final double? lng = datosFila['longitud_casa'] != null
-                ? (datosFila['longitud_casa'] as num).toDouble()
-                : null;
+      final datosFila = await Supabase.instance.client
+          .from('ciudadanos')
+          .select('nombre, casa_latitud, casa_longitud')
+          .eq('id_usuario', widget.idUsuario)
+          .single();
 
-            if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
-              _ubicacionCasaUsuario = LatLng(lat, lng);
-              _tieneCasaRegistrada =
-                  true; // Solo se activa si las coordenadas no son nulas ni ceros
-            } else {
-              _ubicacionCasaUsuario = _tantoyucaCentro;
-              _tieneCasaRegistrada = false;
-            }
-            _cargandoCasa = false;
-          });
-          return;
+      final double? lat = datosFila['casa_latitud'] != null
+          ? (datosFila['casa_latitud'] as num).toDouble()
+          : null;
+      final double? lng = datosFila['casa_longitud'] != null
+          ? (datosFila['casa_longitud'] as num).toDouble()
+          : null;
+
+      setState(() {
+        if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+          _ubicacionCasaUsuario = LatLng(lat, lng);
+          _tieneCasaRegistrada = true;
+        } else {
+          _ubicacionCasaUsuario = _tantoyucaCentro;
+          _tieneCasaRegistrada = false;
         }
-      }
-    } catch (e) {
-      debugPrint("Error al consultar datos residenciales en Supabase: $e");
-    }
+        _cargandoCasa = false;
+      });
 
-    setState(() {
-      _idUsuarioInterno = 1;
-      _ubicacionCasaUsuario = _tantoyucaCentro;
-      _tieneCasaRegistrada = false;
-      _cargandoCasa = false;
-    });
+      // Cargar perfil para la sección de perfil
+      final perfil = await _perfilRepo.obtenerPerfilCiudadano(widget.idUsuario);
+      setState(() {
+        _perfilCiudadano = perfil;
+      });
+    } catch (e) {
+      debugPrint("Error al cargar domicilio: $e");
+      setState(() {
+        _ubicacionCasaUsuario = _tantoyucaCentro;
+        _tieneCasaRegistrada = false;
+        _cargandoCasa = false;
+      });
+    }
   }
 
-  /// 📐 Fórmula de Haversine local (Métrica rigurosa de 100 metros)
+  /// Fórmula de Haversine local
   double _calcularHaversineLocal(
     double lat1,
     double lon1,
@@ -355,10 +357,10 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
           },
         ),
 
-        // 🚨 BANNER DE INCIDENCIAS MECÁNICAS O DE TRÁFICO
+        // BANNER DE INCIDENCIAS MECÁNICAS O DE TRÁFICO
         _buildIncidenciasStreamBanner(),
 
-        // 📋 BOTÓN PARA DESPLEGAR PANEL DE UNIDADES ONLINE
+        // BOTÓN PARA DESPLEGAR PANEL DE UNIDADES ONLINE
         Positioned(
           bottom: 24,
           right: 16,
@@ -480,7 +482,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
     );
   }
 
-  /// 📝 PESTAÑA 1: Interfaz Original de Envío de Reportes
+  ///  interfaz de Envío de Reportes
   Widget _buildReportarSection() {
     return Scaffold(
       body: SingleChildScrollView(
@@ -651,7 +653,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
     );
   }
 
-  /// 👤 PESTAÑA 2: Sección Perfil
+  /// 👤 Sección Perfil
   Widget _buildPerfilSection() {
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -660,15 +662,45 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
           const SizedBox(height: 30),
           CircleAvatar(
             radius: 50,
-            backgroundColor: Colors.grey[200],
-            child: const Icon(Icons.person, size: 60, color: Colors.grey),
+            backgroundColor: const Color(0xFF2E7D32).withOpacity(0.1),
+            child: const Icon(Icons.person, size: 60, color: Color(0xFF2E7D32)),
           ),
           const SizedBox(height: 20),
-          const Card(
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: ListTile(
-              leading: Icon(Icons.account_circle, color: Color(0xFF2E7D32)),
-              title: Text('Nombre de Usuario'),
-              subtitle: Text('Ciudadano Autenticado'),
+              leading: const Icon(Icons.badge, color: Color(0xFF2E7D32)),
+              title: const Text('Nombre completo'),
+              subtitle: Text(_perfilCiudadano?['nombre'] ?? 'Cargando...'),
+            ),
+          ),
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              leading: const Icon(
+                Icons.account_circle,
+                color: Color(0xFF2E7D32),
+              ),
+              title: const Text('Usuario'),
+              subtitle: Text(_perfilCiudadano?['usuario'] ?? 'Cargando...'),
+            ),
+          ),
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.home, color: Color(0xFF2E7D32)),
+              title: const Text('Domicilio registrado'),
+              subtitle: Text(
+                _tieneCasaRegistrada
+                    ? '${_perfilCiudadano?['casa_latitud']}, ${_perfilCiudadano?['casa_longitud']}'
+                    : 'No registrado',
+              ),
             ),
           ),
           const Spacer(),

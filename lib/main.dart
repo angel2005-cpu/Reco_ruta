@@ -32,7 +32,11 @@ class MyApp extends StatelessWidget {
       home: const LoginPantalla(),
       routes: {
         '/login': (context) => const LoginPantalla(),
-        '/mapa_ciudadano': (context) => const MapaCiudadanoScreen(),
+        '/mapa_ciudadano': (context) {
+          final int idUsuario =
+              ModalRoute.of(context)?.settings.arguments as int? ?? 0;
+          return MapaCiudadanoScreen(idUsuario: idUsuario);
+        },
         '/interfaz_chofer': (context) {
           final int idUsuario =
               ModalRoute.of(context)?.settings.arguments as int? ?? 0;

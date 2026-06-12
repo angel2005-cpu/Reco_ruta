@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_camiones/datos/repositorios/perfil_repositorio.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -16,6 +17,8 @@ class InterfazChoferScreen extends StatefulWidget {
 }
 
 class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
+  Map<String, dynamic>? _perfilChofer;
+  final PerfilRepositorio _perfilRepo = PerfilRepositorio();
   final MapController _mapController = MapController();
   int _currentIndex = 0;
   String _estadoCamion = "Disponible";
@@ -38,6 +41,14 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     super.initState();
     _modeloVista.addListener(_onViewModelChange);
     _reporteModelo.addListener(_onReporteStateChange);
+    _cargarPerfil();
+  }
+
+  Future<void> _cargarPerfil() async {
+    final perfil = await _perfilRepo.obtenerPerfilChofer(widget.idUsuario);
+    setState(() {
+      _perfilChofer = perfil;
+    });
   }
 
   @override
@@ -683,11 +694,11 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
         children: [
           CircleAvatar(
             radius: 45,
-            backgroundColor: Colors.grey[200],
+            backgroundColor: const Color(0xFF2E7D32).withOpacity(0.1),
             child: const Icon(
               Icons.local_shipping,
               size: 50,
-              color: Colors.grey,
+              color: Color(0xFF2E7D32),
             ),
           ),
           const SizedBox(height: 16),
@@ -695,56 +706,64 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const ListTile(
-              leading: Icon(Icons.person, color: Color(0xFF2E7D32)),
-              title: Text('Nombre del Conductor'),
-              subtitle: Text('Chofer Asignado'),
+            child: ListTile(
+              leading: const Icon(Icons.badge, color: Color(0xFF2E7D32)),
+              title: const Text('Nombre del Conductor'),
+              subtitle: Text(_perfilChofer?['nombre'] ?? 'Cargando...'),
             ),
           ),
           Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const ListTile(
-              leading: Icon(Icons.vignette, color: Color(0xFF2E7D32)),
-              title: Text('Placas del Vehículo'),
-              subtitle: Text('XW-54-210'),
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16.0),
-            child: Divider(),
-          ),
-          const Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Agenda Laboral',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+            child: ListTile(
+              leading: const Icon(
+                Icons.account_circle,
                 color: Color(0xFF2E7D32),
               ),
+              title: const Text('Usuario'),
+              subtitle: Text(_perfilChofer?['usuario'] ?? 'Cargando...'),
             ),
           ),
-          const SizedBox(height: 12),
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.vignette, color: Color(0xFF2E7D32)),
+              title: const Text('Placas del Vehículo'),
+              subtitle: Text(_perfilChofer?['placa'] ?? 'Cargando...'),
+            ),
+          ),
           Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
             color: Colors.green[50],
             elevation: 0,
-            child: const ListTile(
-              leading: Icon(Icons.calendar_month, color: Color(0xFF2E7D32)),
-              title: Text(
-                'Lun, Mié y Vie — 06:00 AM a 02:00 PM',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            child: ListTile(
+              leading: const Icon(
+                Icons.calendar_month,
+                color: Color(0xFF2E7D32),
               ),
-              subtitle: Text('Sector: Zona Centro - Tantoyuca'),
+              title: const Text('Horario'),
+              subtitle: Text(_perfilChofer?['horario'] ?? 'Cargando...'),
+            ),
+          ),
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            color: Colors.green[50],
+            elevation: 0,
+            child: ListTile(
+              leading: const Icon(Icons.map, color: Color(0xFF2E7D32)),
+              title: const Text('Sector Asignado'),
+              subtitle: Text(_perfilChofer?['sector'] ?? 'Cargando...'),
             ),
           ),
           const Spacer(),
           OutlinedButton.icon(
-            // 🛠️ CORRECCIÓN: Se le añade el ID asignado para cumplir con el contrato del ViewModel
             onPressed: () {
               _modeloVista.detenerRuta(
                 widget.idUsuario,

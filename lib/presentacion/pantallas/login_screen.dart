@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import '../modelos_vista/login_modelo.dart';
 import 'registro.dart';
-import 'mapa_ciudadano.dart';
-import 'interfaz_chofer.dart';
 
 class LoginPantalla extends StatefulWidget {
   const LoginPantalla({super.key});
@@ -71,12 +69,13 @@ class _LoginPantallaState extends State<LoginPantalla> {
         Navigator.pushReplacementNamed(
           context,
           '/interfaz_chofer',
-          arguments: _modeloVista.idUsuario, // ← pasa el id del usuario
+          arguments: _modeloVista.idUsuario,
         );
       } else {
-        Navigator.pushReplacement(
+        Navigator.pushReplacementNamed(
           context,
-          MaterialPageRoute(builder: (context) => const MapaCiudadanoScreen()),
+          '/mapa_ciudadano',
+          arguments: _modeloVista.idUsuario,
         );
       }
     }

@@ -6,11 +6,11 @@ class ReporteRepositorio {
 
   Future<String> subirFotoEvidencia(File archivoImagen) async {
     try {
-      // Generamos un nombre único basado en los milisegundos del sistema para evitar colisiones
+      // se genera un nombre único basado en los milisegundos del sistema para evitar colisiones
       final String nombreArchivo =
           '${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-      // Subimos el archivo al bucket 'evidencias'
+      // subimos el archivo al bucket 'evidencias'
       await _supabase.storage
           .from('evidencias')
           .upload(
@@ -59,11 +59,19 @@ class ReporteRepositorio {
   }
 
   /// el chofer cambia el estado del reporte de 'Pendiente' a 'Atendido'
-  Future<void> marcarReporteComoAtendido(int idReporte) async {
+  /// el chofer cambia el estado del reporte de 'Pendiente' a 'Atendido' y guarda quién lo atendió
+  Future<void> marcarReporteComoAtendido({
+    required int idReporte,
+    required int idChofer,
+  }) async {
     try {
       await _supabase
           .from('reportes_ciudadanos')
-          .update({'estado': 'Atendido'})
+          .update({
+            'estado': 'Atendido',
+            'id_chofer':
+                idChofer, // <-- Guardamos quirúrgicamente el ID del chofer
+          })
           .eq('id_reporte', idReporte);
     } catch (e) {
       throw Exception('Error al actualizar el reporte: $e');

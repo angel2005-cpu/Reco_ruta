@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class NotificacionRepositorio {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Guarda la notificación en Supabase Y la muestra en el dispositivo
+  /// guarda la notificación en la base de datos y la muestra en el dispositivo
   Future<void> enviarNotificacionCamionCerca({required int idUsuario}) async {
     await _supabase.from('notificaciones').insert({
       'titulo': '🚛 ¡El camión está cerca!',
@@ -12,7 +12,7 @@ class NotificacionRepositorio {
     });
   }
 
-  /// Para mostrar el historial de notificaciones al ciudadano
+  /// para mostrar el historial de notificaciones al ciudadano
   Future<List<Map<String, dynamic>>> obtenerNotificaciones({
     required int idUsuario,
   }) async {

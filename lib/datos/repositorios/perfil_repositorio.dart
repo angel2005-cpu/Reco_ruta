@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class PerfilRepositorio {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Datos del ciudadano: nombre + usuario
+  /// datos del ciudadano: nombre + usuario
   Future<Map<String, dynamic>> obtenerPerfilCiudadano(int idUsuario) async {
     final usuario = await _supabase
         .from('usuarios')
@@ -25,7 +25,7 @@ class PerfilRepositorio {
     };
   }
 
-  /// Datos del chofer: nombre + placa + horario + sector
+  /// datos del chofer: nombre + placa + horario + sector
   Future<Map<String, dynamic>> obtenerPerfilChofer(int idUsuario) async {
     final usuario = await _supabase
         .from('usuarios')
@@ -39,7 +39,7 @@ class PerfilRepositorio {
         .eq('id_usuario', idUsuario)
         .single();
 
-    // Obtener placa del vehículo asignado
+    // obtener placa del vehículo asignado
     String placa = 'Sin vehículo';
     if (chofer['id_vehiculo'] != null) {
       final vehiculo = await _supabase

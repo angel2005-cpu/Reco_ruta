@@ -110,7 +110,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     });
 
     // ⚡ SOLUCIÓN DE INERCIA: Obtener posición actual INMEDIATAMENTE al oprimir el botón
-    // para que aparezca al instante en el mapa del ciudadano sin esperar a que avance 10 metros.
     try {
       Position posicionInicial = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -134,13 +133,27 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
       debugPrint("Aviso: Esperando señal del flujo de GPS continuo...");
     }
 
+    final AndroidSettings configuracionAndroid = AndroidSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10, // Mantiene tu filtro de 10 metros
+      forceLocationManager: false,
+      intervalDuration: const Duration(
+        seconds: 5,
+      ), // No lee más rápido que cada 5 seg.
+      foregroundNotificationConfig: const ForegroundNotificationConfig(
+        notificationTitle: "Ruta Activa - Reco_ruta",
+        notificationText:
+            "Compartiendo la ubicación del camión en tiempo real.",
+        notificationIcon: AndroidResource(name: 'launcher_background'),
+        enableWakeLock: true, // Mantiene vivo el GPS con la pantalla apagada
+      ),
+    );
+
     // Escuchar el flujo de posiciones continuo por movimiento
     _positionStreamSubscription =
         Geolocator.getPositionStream(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            distanceFilter: 10,
-          ),
+          locationSettings:
+              configuracionAndroid, // <-- Aquí inyectas la configuración de Android
         ).listen((Position position) {
           final nuevaCoordenada = LatLng(position.latitude, position.longitude);
 
@@ -578,14 +591,17 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
                                     try {
                                       await _reporteRepo
                                           .marcarReporteComoAtendido(
-                                            reporte['id_reporte'],
+                                            idReporte: reporte['id_reporte'],
+                                            idChofer: widget.idUsuario,
                                           );
+
                                       if (_reporteDestinoVisual?.latitude ==
                                           reporte['latitud']) {
                                         setState(() {
                                           _reporteDestinoVisual = null;
                                         });
                                       }
+
                                       ScaffoldMessenger.of(
                                         context,
                                       ).showSnackBar(

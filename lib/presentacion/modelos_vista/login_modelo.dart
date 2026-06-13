@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_camiones/datos/repositorios/autenticacion_repositorio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginModeloVista extends ChangeNotifier {
   final AutenticacionRepositorio _authRepository = AutenticacionRepositorio();
@@ -20,7 +21,6 @@ class LoginModeloVista extends ChangeNotifier {
     required String usuario,
     required String password,
   }) async {
-    // Validación básica inicial
     if (usuario.isEmpty || password.isEmpty) {
       _actualizarEstado(error: 'Por favor, llena todos los campos.');
       return;
@@ -36,6 +36,10 @@ class LoginModeloVista extends ChangeNotifier {
 
       _rolUsuario = resultado['rol'];
       _idUsuario = resultado['id_usuario'];
+
+      // Guardar sesión localmente
+      await registrarSesionLocal(_idUsuario!, _rolUsuario!);
+
       _actualizarEstado(cargando: false);
     } catch (e) {
       _actualizarEstado(cargando: false, error: e.toString());
@@ -52,6 +56,22 @@ class LoginModeloVista extends ChangeNotifier {
   void _actualizarEstado({bool? cargando, String? error}) {
     if (cargando != null) _estaCargando = cargando;
     _mensajeError = error;
-    notifyListeners(); // Avisa a login_screen.dart que hubo cambios
+    notifyListeners();
+  }
+
+  Future<void> registrarSesionLocal(int idUsuario, String rol) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    await prefs.setInt('id_usuario', idUsuario);
+    await prefs.setString('rol', rol);
+    await prefs.setBool('esta_logueado', true);
+  }
+
+  Future<void> cerrarSesion() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    await prefs.remove('id_usuario');
+    await prefs.remove('rol');
+    await prefs.setBool('esta_logueado', false);
   }
 }

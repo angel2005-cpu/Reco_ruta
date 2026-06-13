@@ -40,7 +40,7 @@ class AutenticacionRepositorio {
     }
   }
 
-  /// 🔑 LOGIN: Valida las credenciales y devuelve el rol del usuario
+  /// valida las credenciales y devuelve el rol del usuario
   Future<Map<String, dynamic>> iniciarSesion({
     required String usuario,
     required String password,
@@ -48,7 +48,7 @@ class AutenticacionRepositorio {
     try {
       final List<Map<String, dynamic>> respuesta = await _supabase
           .from('usuarios')
-          .select('id_usuario, rol') // ← agrega id_usuario
+          .select('id_usuario, rol')
           .eq('usuario', usuario)
           .eq('contrasena', password);
 

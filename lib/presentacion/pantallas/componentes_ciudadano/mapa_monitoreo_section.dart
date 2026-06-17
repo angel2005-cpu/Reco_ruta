@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_camiones/datos/utilidades/notificacion_servicio.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_application_camiones/datos/repositorios/reporte_repositorio.dart';
 import 'package:flutter_application_camiones/datos/repositorios/vehiculo_repositorio.dart';
 
-/// 🗺️ PESTAÑA 0: Sección Monitoreo (Mapa Completo con capa Realtime aislada)
+/// Sección Monitoreo (Mapa Completo con capa Realtime aislada)
 class MapaMonitoreoSection extends StatelessWidget {
   const MapaMonitoreoSection({
     super.key,
@@ -18,6 +19,7 @@ class MapaMonitoreoSection extends StatelessWidget {
     required this.onTapMapa,
     required this.calcularHaversineLocal,
     required this.onMostrarPanelCamiones,
+    required this.idUsuario,
   });
 
   final MapController mapController;
@@ -33,6 +35,7 @@ class MapaMonitoreoSection extends StatelessWidget {
   final double Function(double lat1, double lon1, double lat2, double lon2)
   calcularHaversineLocal;
   final void Function(BuildContext context) onMostrarPanelCamiones;
+  final int idUsuario;
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +150,7 @@ class MapaMonitoreoSection extends StatelessWidget {
           ],
         ),
 
-        // 🔔 ALERTA DE PROXIMIDAD INMEDIATA (100 METROS)
+        // ALERTA DE PROXIMIDAD INMEDIATA (100 METROS)
         // Usa su propio StreamBuilder flotante para no interferir con las operaciones de la cámara del mapa
         StreamBuilder<List<Map<String, dynamic>>>(
           stream: vehiculoRepo.escucharCamionesEnRuta(),
@@ -183,6 +186,7 @@ class MapaMonitoreoSection extends StatelessWidget {
             }
 
             if (distanciaMinima <= 100 && camionMasCercano != null) {
+              NotificacionServicio.notificarCamionCerca(idUsuario: idUsuario);
               return _AlertaProximidadFlotante(
                 idVehiculo: camionMasCercano['id_vehiculo'],
                 distancia: distanciaMinima.toInt(),

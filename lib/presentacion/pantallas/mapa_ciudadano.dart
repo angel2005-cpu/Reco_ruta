@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_camiones/datos/repositorios/perfil_repositorio.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart' as image_picker;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -22,6 +23,31 @@ class MapaCiudadanoScreen extends StatefulWidget {
 
   @override
   State<MapaCiudadanoScreen> createState() => _MapaCiudadanoScreenState();
+}
+
+Future<void> _iniciarMonitoreoSegundoPlano() async {
+  LocationPermission permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+  }
+
+  final AndroidSettings configuracionAndroid = AndroidSettings(
+    accuracy: LocationAccuracy.low,
+    distanceFilter: 50, // solo actualiza cada 50m
+    intervalDuration: const Duration(seconds: 30), // ← cada 30s
+    foregroundNotificationConfig: const ForegroundNotificationConfig(
+      notificationTitle: "Recoruta activo",
+      notificationText: "Monitoreando el camión de basura en tu zona.",
+      notificationIcon: AndroidResource(name: 'launcher_background'),
+      enableWakeLock: true,
+    ),
+  );
+
+  Geolocator.getPositionStream(locationSettings: configuracionAndroid).listen((
+    _,
+  ) {
+    // se mantiene activo el servicio en segundo plano
+  });
 }
 
 class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
@@ -53,6 +79,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
   void initState() {
     super.initState();
     _cargarDomicilioDesdeSupabase();
+    _iniciarMonitoreoSegundoPlano();
   }
 
   @override
@@ -173,6 +200,7 @@ class _MapaCiudadanoScreenState extends State<MapaCiudadanoScreen> {
         ubicacionCasaUsuario: _ubicacionCasaUsuario,
         tieneCasaRegistrada: _tieneCasaRegistrada,
         coordenadasReporte: _coordenadasReporte,
+        idUsuario: widget.idUsuario,
         onTapMapa: (punto) {
           setState(() {
             _coordenadasReporte = punto;

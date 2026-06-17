@@ -1,9 +1,10 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:bcrypt/bcrypt.dart';
 
 class AutenticacionRepositorio {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  //inserta los datos en 'usuarios' y 'ciudadanos'
+  // Inserta los datos en 'usuarios' y 'ciudadanos'
   Future<void> registrarCiudadano({
     required String usuario,
     required String password,
@@ -12,11 +13,14 @@ class AutenticacionRepositorio {
     required double longitud,
   }) async {
     try {
+      // Generar hash de la contraseña
+      final String hashPassword = BCrypt.hashpw(password, BCrypt.gensalt());
+
       final List<Map<String, dynamic>> nuevoUsuario = await _supabase
           .from('usuarios')
           .insert({
             'usuario': usuario,
-            'contrasena': password,
+            'contrasena': hashPassword,
             'rol': 'ciudadano',
           })
           .select('id_usuario');
@@ -40,7 +44,7 @@ class AutenticacionRepositorio {
     }
   }
 
-  /// valida las credenciales y devuelve el rol del usuario
+  /// Valida las credenciales y devuelve el rol del usuario
   Future<Map<String, dynamic>> iniciarSesion({
     required String usuario,
     required String password,
@@ -48,18 +52,28 @@ class AutenticacionRepositorio {
     try {
       final List<Map<String, dynamic>> respuesta = await _supabase
           .from('usuarios')
-          .select('id_usuario, rol')
-          .eq('usuario', usuario)
-          .eq('contrasena', password);
+          .select('id_usuario, rol, contrasena')
+          .eq('usuario', usuario);
 
-      if (respuesta.isNotEmpty) {
-        return {
-          'rol': respuesta.first['rol'] as String,
-          'id_usuario': respuesta.first['id_usuario'] as int,
-        };
-      } else {
+      if (respuesta.isEmpty) {
         throw Exception('Usuario o contraseña incorrectos.');
       }
+
+      final datosUsuario = respuesta.first;
+
+      final bool passwordCorrecta = BCrypt.checkpw(
+        password,
+        datosUsuario['contrasena'],
+      );
+
+      if (!passwordCorrecta) {
+        throw Exception('Usuario o contraseña incorrectos.');
+      }
+
+      return {
+        'rol': datosUsuario['rol'] as String,
+        'id_usuario': datosUsuario['id_usuario'] as int,
+      };
     } catch (e) {
       throw Exception(e.toString().replaceAll('Exception: ', ''));
     }

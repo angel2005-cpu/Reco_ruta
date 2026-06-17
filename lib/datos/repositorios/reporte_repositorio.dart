@@ -69,8 +69,7 @@ class ReporteRepositorio {
           .from('reportes_ciudadanos')
           .update({
             'estado': 'Atendido',
-            'id_chofer':
-                idChofer, // <-- Guardamos quirúrgicamente el ID del chofer
+            'id_chofer': idChofer, // se guarda el ID del chofer
           })
           .eq('id_reporte', idReporte);
     } catch (e) {
@@ -98,7 +97,7 @@ class ReporteRepositorio {
     return _supabase
         .from('incidencias') // nombre de la tabla
         .stream(primaryKey: ['id_incidencia'])
-        .order('creado_en', ascending: false) // Trae la más reciente primero
-        .limit(1); // Solo nos interesa la última alerta activa
+        .order('fecha_hora', ascending: false) // Trae las más recientes primero
+        .limit(20); // historial reciente de incidencias
   }
 }

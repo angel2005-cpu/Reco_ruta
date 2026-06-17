@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_camiones/datos/repositorios/perfil_repositorio.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:flutter_application_camiones/datos/repositorios/perfil_repositorio.dart';
+import 'package:flutter_application_camiones/datos/repositorios/reporte_repositorio.dart';
 import 'package:flutter_application_camiones/presentacion/modelos_vista/chofer_modelo.dart';
 import 'package:flutter_application_camiones/presentacion/modelos_vista/reporte_modelo.dart';
-import 'package:flutter_application_camiones/datos/repositorios/reporte_repositorio.dart';
+import 'componentes_chofer/mapa_ruta_widget.dart';
+import 'componentes_chofer/lista_reportes_widget.dart';
+import 'componentes_chofer/formulario_incidencia_widget.dart';
+import 'componentes_chofer/perfil_chofer_widget.dart';
 
 class InterfazChoferScreen extends StatefulWidget {
   final int idUsuario;
@@ -88,7 +92,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     });
   }
 
-  /// Inicia el rastreo por GPS y vincula el movimiento del camión al mapa
   Future<void> _iniciarRastreoGPS() async {
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
@@ -109,7 +112,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
       _rutaActiva = true;
     });
 
-    // ⚡ SOLUCIÓN DE INERCIA: Obtener posición actual INMEDIATAMENTE al oprimir el botón
     try {
       Position posicionInicial = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -135,25 +137,21 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
 
     final AndroidSettings configuracionAndroid = AndroidSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 10, // Mantiene tu filtro de 10 metros
+      distanceFilter: 10,
       forceLocationManager: false,
-      intervalDuration: const Duration(
-        seconds: 5,
-      ), // No lee más rápido que cada 5 seg.
+      intervalDuration: const Duration(seconds: 5),
       foregroundNotificationConfig: const ForegroundNotificationConfig(
         notificationTitle: "Ruta Activa - Reco_ruta",
         notificationText:
             "Compartiendo la ubicación del camión en tiempo real.",
         notificationIcon: AndroidResource(name: 'launcher_background'),
-        enableWakeLock: true, // Mantiene vivo el GPS con la pantalla apagada
+        enableWakeLock: true,
       ),
     );
 
-    // Escuchar el flujo de posiciones continuo por movimiento
     _positionStreamSubscription =
         Geolocator.getPositionStream(
-          locationSettings:
-              configuracionAndroid, // <-- Aquí inyectas la configuración de Android
+          locationSettings: configuracionAndroid,
         ).listen((Position position) {
           final nuevaCoordenada = LatLng(position.latitude, position.longitude);
 
@@ -219,10 +217,82 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> screens = [
-      _buildMapaRutaSection(),
-      _buildVerReportesSection(),
-      _buildIncidenciaSection(),
-      _buildPerfilSection(),
+      MapaRutaWidget(
+        mapController: _mapController,
+        ubicacionActualCamion: _ubicacionActualCamion,
+        reporteDestinoVisual: _reporteDestinoVisual,
+        tantoyucaCentro: _tantoyucaCentro,
+        estadoCamion: _estadoCamion,
+        estaTransmitiendo: _modeloVista.estaTransmitiendo,
+        onEstadoCamionChanged: (String? newValue) {
+          if (newValue != null) {
+            setState(() {
+              _estadoCamion = newValue;
+            });
+            if (newValue == 'En Ruta') {
+              if (!_modeloVista.estaTransmitiendo) {
+                _modeloVista.iniciarRuta(widget.idUsuario);
+              }
+            } else {
+              _modeloVista.detenerRuta(widget.idUsuario, estadoFinal: newValue);
+            }
+          }
+        },
+        onToggleRuta: () {
+          if (_modeloVista.estaTransmitiendo) {
+            _modeloVista.detenerRuta(
+              widget.idUsuario,
+              estadoFinal: 'Disponible',
+            );
+          } else {
+            _modeloVista.iniciarRuta(widget.idUsuario);
+          }
+        },
+        onClearDestino: () {
+          setState(() {
+            _reporteDestinoVisual = null;
+          });
+          if (_ubicacionActualCamion != null) {
+            _mapController.move(_ubicacionActualCamion!, 16.0);
+          }
+        },
+      ),
+      ListaReportesWidget(
+        reporteRepo: _reporteRepo,
+        idUsuario: widget.idUsuario,
+        esDestinoActual: (lat) => _reporteDestinoVisual?.latitude == lat,
+        onReporteAtendido: (nuevoDestino) {
+          setState(() {
+            _reporteDestinoVisual = nuevoDestino;
+          });
+        },
+        onVerEnMapa: (lat, lng) {
+          setState(() {
+            _reporteDestinoVisual = LatLng(lat, lng);
+            _currentIndex = 0;
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _mapController.move(_reporteDestinoVisual!, 16.0);
+          });
+        },
+      ),
+      FormularioIncidenciaWidget(
+        controller: _incidenciaController,
+        idUsuario: widget.idUsuario,
+        onEnviarIncidencia: (descripcion) {
+          _reporteModelo.enviarIncidencia(
+            idVehiculo: widget.idUsuario,
+            descripcion: descripcion,
+          );
+        },
+      ),
+      PerfilChoferWidget(
+        perfilChofer: _perfilChofer,
+        onCerrarSesion: () {
+          _modeloVista.detenerRuta(widget.idUsuario, estadoFinal: 'Disponible');
+          Navigator.pushReplacementNamed(context, '/login');
+        },
+      ),
     ];
 
     final List<String> titles = [
@@ -265,541 +335,6 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
             label: 'Incidencias',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Perfil'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMapaRutaSection() {
-    final bool esRutaActiva = _modeloVista.estaTransmitiendo;
-    return Stack(
-      children: [
-        FlutterMap(
-          mapController: _mapController,
-          options: MapOptions(
-            initialCenter:
-                _reporteDestinoVisual ??
-                _ubicacionActualCamion ??
-                _tantoyucaCentro,
-            initialZoom: 14.5,
-          ),
-          children: [
-            TileLayer(
-              urlTemplate:
-                  'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.recoruta.app',
-            ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: _ubicacionActualCamion ?? _tantoyucaCentro,
-                  width: 50,
-                  height: 50,
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: Colors.black26, blurRadius: 6),
-                      ],
-                    ),
-                    child: Icon(
-                      Icons.local_shipping,
-                      color: esRutaActiva
-                          ? const Color(0xFF2E7D32)
-                          : Colors.grey,
-                      size: 32,
-                    ),
-                  ),
-                ),
-                if (_reporteDestinoVisual != null)
-                  Marker(
-                    point: _reporteDestinoVisual!,
-                    width: 55,
-                    height: 55,
-                    child: const Icon(
-                      Icons.location_on,
-                      color: Colors.red,
-                      size: 45,
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-        if (_reporteDestinoVisual != null)
-          Positioned(
-            top: 85,
-            right: 16,
-            child: FloatingActionButton.small(
-              backgroundColor: Colors.white,
-              onPressed: () {
-                setState(() {
-                  _reporteDestinoVisual = null;
-                });
-                if (_ubicacionActualCamion != null) {
-                  _mapController.move(_ubicacionActualCamion!, 16.0);
-                }
-              },
-              child: const Icon(Icons.layers_clear, color: Colors.red),
-            ),
-          ),
-        Positioned(
-          top: 16,
-          left: 16,
-          right: 16,
-          child: Card(
-            elevation: 4,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    "Estado del Camión:",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
-                  DropdownButton<String>(
-                    value: _estadoCamion,
-                    underline: Container(),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2E7D32),
-                    ),
-                    items:
-                        <String>[
-                          'Disponible',
-                          'En Ruta',
-                          'Mantenimiento',
-                          'Fuera de Servicio',
-                        ].map<DropdownMenuItem<String>>((String value) {
-                          return DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
-                          );
-                        }).toList(),
-                    onChanged: (String? newValue) {
-                      if (newValue != null) {
-                        setState(() {
-                          _estadoCamion = newValue;
-                        }); // Permite actualizar el estado local inmediatamente
-                        if (newValue == 'En Ruta') {
-                          if (!esRutaActiva)
-                            _modeloVista.iniciarRuta(widget.idUsuario);
-                        } else {
-                          // 🛠️ CORRECCIÓN: Detiene la ruta enviando el estado exacto seleccionado (Mantenimiento, etc.)
-                          _modeloVista.detenerRuta(
-                            widget.idUsuario,
-                            estadoFinal: newValue,
-                          );
-                        }
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: 20,
-          right: 20,
-          bottom: 20,
-          child: ElevatedButton.icon(
-            onPressed: () {
-              if (esRutaActiva) {
-                _modeloVista.detenerRuta(
-                  widget.idUsuario,
-                  estadoFinal: 'Disponible',
-                );
-              } else {
-                _modeloVista.iniciarRuta(widget.idUsuario);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: esRutaActiva
-                  ? Colors.red[700]
-                  : const Color(0xFF2E7D32),
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(55),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              elevation: 4,
-            ),
-            icon: Icon(esRutaActiva ? Icons.stop : Icons.play_arrow),
-            label: Text(
-              esRutaActiva ? 'TERMINAR RUTA' : 'INICIAR RUTA (COMPARTIR GPS)',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.1,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVerReportesSection() {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _reporteRepo.escucharReportesCiudadanos(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
-          );
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(
-            child: Text(
-              'No hay reportes viales o de basura pendientes.',
-              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500),
-            ),
-          );
-        }
-
-        final reportes = snapshot.data!;
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16.0),
-          itemCount: reportes.length,
-          itemBuilder: (context, index) {
-            final reporte = reportes[index];
-            final bool esAtendido = reporte['estado'] == 'Atendido';
-
-            return Card(
-              margin: const EdgeInsets.only(bottom: 16.0),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.blue[500]?.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            "Folio #${reporte['id_reporte']}",
-                            style: TextStyle(
-                              color: Colors.blue[900],
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            Text(
-                              reporte['estado'] ?? 'Pendiente',
-                              style: TextStyle(
-                                color: esAtendido
-                                    ? Colors.green
-                                    : Colors.orange,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Icon(
-                              esAtendido
-                                  ? Icons.check_circle
-                                  : Icons.radio_button_unchecked,
-                              color: esAtendido ? Colors.green : Colors.grey,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      reporte['descripcion'] ?? '',
-                      style: const TextStyle(fontSize: 14, height: 1.3),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Coordenadas: (${reporte['latitud']}, ${reporte['longitud']})',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                    const Divider(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: esAtendido
-                                ? null
-                                : () {
-                                    final double lat =
-                                        (reporte['latitud'] as num).toDouble();
-                                    final double lng =
-                                        (reporte['longitud'] as num).toDouble();
-
-                                    setState(() {
-                                      _reporteDestinoVisual = LatLng(lat, lng);
-                                      _currentIndex = 0;
-                                    });
-
-                                    WidgetsBinding.instance
-                                        .addPostFrameCallback((_) {
-                                          _mapController.move(
-                                            _reporteDestinoVisual!,
-                                            16.0,
-                                          );
-                                        });
-                                  },
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Colors.blue),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              minimumSize: const Size.fromHeight(45),
-                            ),
-                            icon: const Icon(Icons.map, color: Colors.blue),
-                            label: const Text(
-                              'VER EN MAPA',
-                              style: TextStyle(
-                                color: Colors.blue,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: esAtendido
-                                ? null
-                                : () async {
-                                    try {
-                                      await _reporteRepo
-                                          .marcarReporteComoAtendido(
-                                            idReporte: reporte['id_reporte'],
-                                            idChofer: widget.idUsuario,
-                                          );
-
-                                      if (_reporteDestinoVisual?.latitude ==
-                                          reporte['latitud']) {
-                                        setState(() {
-                                          _reporteDestinoVisual = null;
-                                        });
-                                      }
-
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Reporte actualizado a Atendido',
-                                          ),
-                                          backgroundColor: Colors.green,
-                                        ),
-                                      );
-                                    } catch (e) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Error al actualizar reporte',
-                                          ),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
-                                  },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2E7D32),
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size.fromHeight(45),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              elevation: 0,
-                            ),
-                            icon: const Icon(Icons.assignment_turned_in),
-                            label: Text(esAtendido ? 'ATENDIDO' : 'RESOLVER'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildIncidenciaSection() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Reportar Percance en Ruta',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Notifica cualquier percance mecánico, tráfico o bloqueo para avisar a los ciudadanos.',
-            style: TextStyle(color: Colors.grey[600], fontSize: 14),
-          ),
-          const SizedBox(height: 24),
-          TextField(
-            controller: _incidenciaController,
-            maxLines: 4,
-            decoration: InputDecoration(
-              hintText: 'Detalla la incidencia aquí...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 30),
-          ElevatedButton.icon(
-            onPressed: () {
-              _reporteModelo.enviarIncidencia(
-                idVehiculo: widget.idUsuario,
-                descripcion: _incidenciaController.text,
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFD32F2F),
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            icon: const Icon(Icons.warning_amber_rounded),
-            label: const Text(
-              'Registrar Incidencia',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPerfilSection() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        children: [
-          CircleAvatar(
-            radius: 45,
-            backgroundColor: const Color(0xFF2E7D32).withOpacity(0.1),
-            child: const Icon(
-              Icons.local_shipping,
-              size: 50,
-              color: Color(0xFF2E7D32),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ListTile(
-              leading: const Icon(Icons.badge, color: Color(0xFF2E7D32)),
-              title: const Text('Nombre del Conductor'),
-              subtitle: Text(_perfilChofer?['nombre'] ?? 'Cargando...'),
-            ),
-          ),
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ListTile(
-              leading: const Icon(
-                Icons.account_circle,
-                color: Color(0xFF2E7D32),
-              ),
-              title: const Text('Usuario'),
-              subtitle: Text(_perfilChofer?['usuario'] ?? 'Cargando...'),
-            ),
-          ),
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ListTile(
-              leading: const Icon(Icons.vignette, color: Color(0xFF2E7D32)),
-              title: const Text('Placas del Vehículo'),
-              subtitle: Text(_perfilChofer?['placa'] ?? 'Cargando...'),
-            ),
-          ),
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            color: Colors.green[50],
-            elevation: 0,
-            child: ListTile(
-              leading: const Icon(
-                Icons.calendar_month,
-                color: Color(0xFF2E7D32),
-              ),
-              title: const Text('Horario'),
-              subtitle: Text(_perfilChofer?['horario'] ?? 'Cargando...'),
-            ),
-          ),
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            color: Colors.green[50],
-            elevation: 0,
-            child: ListTile(
-              leading: const Icon(Icons.map, color: Color(0xFF2E7D32)),
-              title: const Text('Sector Asignado'),
-              subtitle: Text(_perfilChofer?['sector'] ?? 'Cargando...'),
-            ),
-          ),
-          const Spacer(),
-          OutlinedButton.icon(
-            onPressed: () {
-              _modeloVista.detenerRuta(
-                widget.idUsuario,
-                estadoFinal: 'Disponible',
-              );
-              Navigator.pushReplacementNamed(context, '/login');
-            },
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(50),
-              side: const BorderSide(color: Colors.red),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            icon: const Icon(Icons.logout, color: Colors.red),
-            label: const Text(
-              'Cerrar Sesión',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
         ],
       ),
     );

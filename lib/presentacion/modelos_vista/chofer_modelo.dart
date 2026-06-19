@@ -7,6 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class ChoferModeloVista extends ChangeNotifier {
   final VehiculoRepositorio _vehiculoRepo = VehiculoRepositorio();
   int? _idVehiculoAsignado;
+
+  int? get idVehiculoAsignado => _idVehiculoAsignado;
   // Suscripción activa al GPS para poder apagarla cuando el chofer termine su turno
   StreamSubscription<Position>? _gpsSubscription;
 
@@ -24,8 +26,7 @@ class ChoferModeloVista extends ChangeNotifier {
           .eq('id_usuario', idUsuario)
           .single();
 
-      _idVehiculoAsignado = respuesta['id_vehiculo'];
-
+      _idVehiculoAsignado = respuesta['id_vehiculo'] as int;
       notifyListeners();
     } catch (e) {
       print('Error al obtener vehículo: $e');

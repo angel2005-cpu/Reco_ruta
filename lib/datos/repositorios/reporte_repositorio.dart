@@ -78,6 +78,7 @@ class ReporteRepositorio {
   }
 
   /// el chofer registra un percance de ruta en la tabla incidencias
+  /// el chofer registra un percance de ruta en la tabla incidencias
   Future<void> crearIncidenciaChofer({
     required int idVehiculo,
     required String descripcion,

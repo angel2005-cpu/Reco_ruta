@@ -30,14 +30,15 @@ class VehiculoRepositorio {
           })
           .eq('id_vehiculo', idVehiculo);
 
-      // Registramos el punto en el historial de recorrido, solo si el
-      // camión se movió al menos _distanciaMinimaHistorialMetros desde
-      // el último punto guardado (para no saturar la tabla).
       await _registrarPuntoHistorialSiAplica(
         idVehiculo: idVehiculo,
         latitud: latitud,
         longitud: longitud,
       );
+
+      // Registramos el punto en el historial de recorrido, solo si el
+      // camión se movió al menos _distanciaMinimaHistorialMetros desde
+      // el último punto guardado (para no saturar la tabla).
     } catch (e) {
       throw Exception('Error al transmitir ubicación: $e');
     }

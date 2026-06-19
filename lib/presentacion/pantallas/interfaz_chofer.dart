@@ -46,6 +46,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     _modeloVista.addListener(_onViewModelChange);
     _reporteModelo.addListener(_onReporteStateChange);
     _cargarPerfil();
+    _modeloVista.cargarVehiculoChofer(widget.idUsuario);
   }
 
   Future<void> _cargarPerfil() async {
@@ -126,11 +127,15 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
       });
       _mapController.move(coordenadaInicial, 16.0);
 
-      await _modeloVista.actualizarUbicacionVehiculo(
-        idVehiculo: widget.idUsuario,
-        latitud: posicionInicial.latitude,
-        longitud: posicionInicial.longitude,
-      );
+      if (_modeloVista.idVehiculoAsignado != null) {
+        await _modeloVista.actualizarUbicacionVehiculo(
+          idVehiculo: _modeloVista.idVehiculoAsignado!,
+          latitud: posicionInicial.latitude,
+          longitud: posicionInicial.longitude,
+        );
+      } else {
+        debugPrint("ID de vehículo no asignado aún. No se envían coordenadas.");
+      }
     } catch (e) {
       debugPrint("Aviso: Esperando señal del flujo de GPS continuo...");
     }
@@ -165,11 +170,17 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
           }
 
           try {
-            _modeloVista.actualizarUbicacionVehiculo(
-              idVehiculo: widget.idUsuario,
-              latitud: position.latitude,
-              longitud: position.longitude,
-            );
+            if (_modeloVista.idVehiculoAsignado != null) {
+              _modeloVista.actualizarUbicacionVehiculo(
+                idVehiculo: _modeloVista.idVehiculoAsignado!,
+                latitud: position.latitude,
+                longitud: position.longitude,
+              );
+            } else {
+              debugPrint(
+                "ID de vehículo no asignado aún. No se envían coordenadas.",
+              );
+            }
           } catch (e) {
             debugPrint("Error al enviar coordenadas: $e");
           }
@@ -241,7 +252,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
         onToggleRuta: () {
           if (_modeloVista.estaTransmitiendo) {
             _modeloVista.detenerRuta(
-              widget.idUsuario,
+              _modeloVista.idVehiculoAsignado ?? widget.idUsuario,
               estadoFinal: 'Disponible',
             );
           } else {

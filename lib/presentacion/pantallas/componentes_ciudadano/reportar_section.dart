@@ -50,6 +50,17 @@ class ReportarSection extends StatelessWidget {
   }
 
   Future<void> _enviarReporte(BuildContext context) async {
+    if (idUsuarioInterno == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Error: no se pudo identificar tu usuario. Cierra sesión y vuelve a entrar.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     if (descripcionController.text.trim().isEmpty ||
         coordenadasReporte == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -62,12 +73,19 @@ class ReportarSection extends StatelessWidget {
       );
       return;
     }
+
     try {
+      String? urlFoto;
+      if (imagenSeleccionada != null) {
+        urlFoto = await reporteRepo.subirFotoEvidencia(imagenSeleccionada);
+      }
+
       await reporteRepo.crearReporteCiudadano(
-        idUsuario: idUsuarioInterno ?? 1,
+        idUsuario: idUsuarioInterno!,
         descripcion: descripcionController.text.trim(),
         latitud: coordenadasReporte!.latitude,
         longitud: coordenadasReporte!.longitude,
+        evidenciaFotoUrl: urlFoto,
       );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

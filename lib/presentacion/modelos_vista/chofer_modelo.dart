@@ -57,7 +57,6 @@ class ChoferModeloVista extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// MÉTODO AGREGADO: Sincroniza las coordenadas dinámicas con Supabase
   Future<void> actualizarUbicacionVehiculo({
     required int idVehiculo,
     required double latitud,

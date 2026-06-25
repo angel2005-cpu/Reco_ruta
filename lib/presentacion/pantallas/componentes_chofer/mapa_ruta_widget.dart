@@ -9,8 +9,9 @@ class MapaRutaWidget extends StatelessWidget {
   final LatLng tantoyucaCentro;
   final String estadoCamion;
   final bool estaTransmitiendo;
-  final ValueChanged<String?> onEstadoCamionChanged;
+  final bool enPausa;
   final VoidCallback onToggleRuta;
+  final VoidCallback onTogglePausa;
   final VoidCallback onClearDestino;
 
   const MapaRutaWidget({
@@ -21,8 +22,9 @@ class MapaRutaWidget extends StatelessWidget {
     required this.tantoyucaCentro,
     required this.estadoCamion,
     required this.estaTransmitiendo,
-    required this.onEstadoCamionChanged,
+    required this.enPausa,
     required this.onToggleRuta,
+    required this.onTogglePausa,
     required this.onClearDestino,
   });
 
@@ -111,26 +113,26 @@ class MapaRutaWidget extends StatelessWidget {
                     "Estado del Camión:",
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                   ),
-                  DropdownButton<String>(
-                    value: estadoCamion,
-                    underline: Container(),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2E7D32),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
                     ),
-                    items:
-                        <String>[
-                          'Disponible',
-                          'En Ruta',
-                          'Mantenimiento',
-                          'Fuera de Servicio',
-                        ].map<DropdownMenuItem<String>>((String value) {
-                          return DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
-                          );
-                        }).toList(),
-                    onChanged: onEstadoCamionChanged,
+                    decoration: BoxDecoration(
+                      color: estaTransmitiendo
+                          ? const Color(0xFF2E7D32).withOpacity(0.12)
+                          : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      estadoCamion,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: estaTransmitiendo
+                            ? const Color(0xFF2E7D32)
+                            : Colors.grey[700],
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -141,30 +143,68 @@ class MapaRutaWidget extends StatelessWidget {
           left: 20,
           right: 20,
           bottom: 20,
-          child: ElevatedButton.icon(
-            onPressed: onToggleRuta,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: estaTransmitiendo
-                  ? Colors.red[700]
-                  : const Color(0xFF2E7D32),
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(55),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Botón de pausa/reanudar: solo aparece si hay una ruta activa o pausada
+              if (estaTransmitiendo || enPausa)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: ElevatedButton.icon(
+                    onPressed: onTogglePausa,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: enPausa
+                          ? const Color(0xFF2E7D32)
+                          : Colors.orange[800],
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 3,
+                    ),
+                    icon: Icon(enPausa ? Icons.play_arrow : Icons.pause),
+                    label: Text(
+                      enPausa ? 'REANUDAR RUTA' : 'PAUSAR RUTA',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Botón grande existente, sin cambios en su lógica
+              ElevatedButton.icon(
+                onPressed: enPausa
+                    ? null
+                    : onToggleRuta, // bloqueado si está en pausa
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: estaTransmitiendo
+                      ? Colors.red[700]
+                      : const Color(0xFF2E7D32),
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey[400],
+                  minimumSize: const Size.fromHeight(55),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 4,
+                ),
+                icon: Icon(estaTransmitiendo ? Icons.stop : Icons.play_arrow),
+                label: Text(
+                  estaTransmitiendo
+                      ? 'TERMINAR RUTA'
+                      : 'INICIAR RUTA (COMPARTIR GPS)',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                  ),
+                ),
               ),
-              elevation: 4,
-            ),
-            icon: Icon(estaTransmitiendo ? Icons.stop : Icons.play_arrow),
-            label: Text(
-              estaTransmitiendo
-                  ? 'TERMINAR RUTA'
-                  : 'INICIAR RUTA (COMPARTIR GPS)',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.1,
-              ),
-            ),
+            ],
           ),
         ),
       ],

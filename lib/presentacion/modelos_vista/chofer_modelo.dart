@@ -7,8 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class ChoferModeloVista extends ChangeNotifier {
   final VehiculoRepositorio _vehiculoRepo = VehiculoRepositorio();
   int? _idVehiculoAsignado;
-
   int? get idVehiculoAsignado => _idVehiculoAsignado;
+
   // Suscripción activa al GPS para poder apagarla cuando el chofer termine su turno
   StreamSubscription<Position>? _gpsSubscription;
 
@@ -18,7 +18,7 @@ class ChoferModeloVista extends ChangeNotifier {
   String? _mensajeError;
   String? get mensajeError => _mensajeError;
 
-  Future<void> cargarVehiculoChofer(int idUsuario) async {
+  Future<int?> cargarVehiculoChofer(int idUsuario) async {
     try {
       final respuesta = await Supabase.instance.client
           .from('choferes')
@@ -28,8 +28,10 @@ class ChoferModeloVista extends ChangeNotifier {
 
       _idVehiculoAsignado = respuesta['id_vehiculo'] as int;
       notifyListeners();
+      return _idVehiculoAsignado;
     } catch (e) {
       print('Error al obtener vehículo: $e');
+      return null;
     }
   }
 
@@ -53,6 +55,25 @@ class ChoferModeloVista extends ChangeNotifier {
     }
 
     // Cambiar estado a transmitiendo para que la vista encienda su rastreador gráfico
+    _estaTransmitiendo = true;
+    notifyListeners();
+  }
+
+  Future<void> pausarRuta(int idVehiculo) async {
+    _estaTransmitiendo = false;
+
+    await _vehiculoRepo.actualizarEstadoVehiculo(
+      idVehiculo: idVehiculo,
+      nuevoEstado: 'En Pausa',
+    );
+    notifyListeners();
+  }
+
+  Future<void> reanudarRuta(int idVehiculo) async {
+    await _vehiculoRepo.actualizarEstadoVehiculo(
+      idVehiculo: idVehiculo,
+      nuevoEstado: 'En Ruta',
+    );
     _estaTransmitiendo = true;
     notifyListeners();
   }

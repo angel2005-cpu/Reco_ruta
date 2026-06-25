@@ -44,6 +44,32 @@ class VehiculoRepositorio {
     }
   }
 
+  Future<void> registrarInspeccionVehiculo({
+    required int idVehiculo,
+    required int idChofer,
+    required String tipoRegistro,
+    required double kilometraje,
+    required String nivelCombustible,
+    required String estadoMecanico,
+    required String urlFotoTablero,
+    String? observaciones,
+  }) async {
+    try {
+      await Supabase.instance.client.from('inspecciones_vehiculos').insert({
+        'id_vehiculo': idVehiculo,
+        'id_chofer': idChofer,
+        'tipo_registro': tipoRegistro,
+        'kilometraje': kilometraje,
+        'nivel_combustible': nivelCombustible,
+        'estado_mecanico': estadoMecanico,
+        'foto_tablero': urlFotoTablero,
+        'observaciones': observaciones ?? 'Sin observaciones',
+      });
+    } catch (e) {
+      throw Exception('Error al guardar la inspección: $e');
+    }
+  }
+
   /// Inserta un punto en 'historial_ubicaciones' si la distancia desde el
   /// último punto registrado supera el umbral mínimo.
   Future<void> _registrarPuntoHistorialSiAplica({

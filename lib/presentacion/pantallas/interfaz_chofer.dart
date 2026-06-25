@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_camiones/datos/repositorios/vehiculo_repositorio.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -11,6 +12,7 @@ import 'componentes_chofer/mapa_ruta_widget.dart';
 import 'componentes_chofer/lista_reportes_widget.dart';
 import 'componentes_chofer/formulario_incidencia_widget.dart';
 import 'componentes_chofer/perfil_chofer_widget.dart';
+import 'componentes_chofer/inspeccion_vehiculo_screen.dart';
 
 class InterfazChoferScreen extends StatefulWidget {
   final int idUsuario;
@@ -29,6 +31,8 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
   StreamSubscription<Position>? _positionStreamSubscription;
   LatLng? _ubicacionActualCamion;
   bool _rutaActiva = false;
+  bool _cargandoDatos = true;
+  bool _enPausa = false;
 
   // guarda el reporte que el chofer seleccionó para ir a atender
   LatLng? _reporteDestinoVisual;
@@ -37,6 +41,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
   final ReporteRepositorio _reporteRepo = ReporteRepositorio();
   final ReporteModeloVista _reporteModelo = ReporteModeloVista();
   final TextEditingController _incidenciaController = TextEditingController();
+  final VehiculoRepositorio _vehiculoRepo = VehiculoRepositorio();
 
   final LatLng _tantoyucaCentro = const LatLng(21.3510, -98.2285);
 
@@ -45,8 +50,43 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     super.initState();
     _modeloVista.addListener(_onViewModelChange);
     _reporteModelo.addListener(_onReporteStateChange);
-    _cargarPerfil();
-    _modeloVista.cargarVehiculoChofer(widget.idUsuario);
+    _inicializarDatosChofer();
+  }
+
+  Future<void> _inicializarDatosChofer() async {
+    await _cargarPerfil();
+    await _modeloVista.cargarVehiculoChofer(widget.idUsuario);
+
+    setState(() {
+      _cargandoDatos = false;
+    });
+  }
+
+  Future<void> _mostrarFormularioInspeccion(bool esSalida) async {
+    final idCamion = _modeloVista.idVehiculoAsignado;
+    if (idCamion == null) return;
+
+    final bool? guardado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => InspeccionVehiculoScreen(
+          esSalida: esSalida,
+          idVehiculo: idCamion,
+          idChofer: widget.idUsuario,
+          reporteRepo: _reporteRepo,
+        ),
+      ),
+    );
+
+    // Si el chofer canceló o hubo un error sin resolver, no hacemos nada
+    if (guardado != true) return;
+
+    // Encendemos o apagamos el GPS solo si la inspección se guardó bien
+    if (esSalida) {
+      _modeloVista.iniciarRuta(idCamion);
+    } else {
+      _modeloVista.detenerRuta(idCamion, estadoFinal: 'Disponible');
+    }
   }
 
   Future<void> _cargarPerfil() async {
@@ -93,6 +133,19 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     });
   }
 
+  Future<void> _alternarPausa() async {
+    final idCamion = _modeloVista.idVehiculoAsignado;
+    if (idCamion == null) return;
+
+    if (_enPausa) {
+      await _modeloVista.reanudarRuta(idCamion);
+      setState(() => _enPausa = false);
+    } else {
+      await _modeloVista.pausarRuta(idCamion);
+      setState(() => _enPausa = true);
+    }
+  }
+
   Future<void> _iniciarRastreoGPS() async {
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
@@ -112,6 +165,14 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
     setState(() {
       _rutaActiva = true;
     });
+
+    // SEGURIDAD: Confirmar el estado en la BD antes de sacar coordenadas
+    if (_modeloVista.idVehiculoAsignado != null) {
+      await _vehiculoRepo.actualizarEstadoVehiculo(
+        idVehiculo: _modeloVista.idVehiculoAsignado!,
+        nuevoEstado: 'En Ruta',
+      );
+    }
 
     try {
       Position posicionInicial = await Geolocator.getCurrentPosition(
@@ -227,6 +288,14 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_cargandoDatos) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
+        ),
+      );
+    }
     final List<Widget> screens = [
       MapaRutaWidget(
         mapController: _mapController,
@@ -235,28 +304,16 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
         tantoyucaCentro: _tantoyucaCentro,
         estadoCamion: _estadoCamion,
         estaTransmitiendo: _modeloVista.estaTransmitiendo,
-        onEstadoCamionChanged: (String? newValue) {
-          if (newValue != null) {
-            setState(() {
-              _estadoCamion = newValue;
-            });
-            if (newValue == 'En Ruta') {
-              if (!_modeloVista.estaTransmitiendo) {
-                _modeloVista.iniciarRuta(widget.idUsuario);
-              }
-            } else {
-              _modeloVista.detenerRuta(widget.idUsuario, estadoFinal: newValue);
-            }
-          }
-        },
+        enPausa: _enPausa,
+        onTogglePausa: _alternarPausa,
         onToggleRuta: () {
+          final idCamion = _modeloVista.idVehiculoAsignado;
+          if (idCamion == null) return;
+
           if (_modeloVista.estaTransmitiendo) {
-            _modeloVista.detenerRuta(
-              _modeloVista.idVehiculoAsignado ?? widget.idUsuario,
-              estadoFinal: 'Disponible',
-            );
+            _mostrarFormularioInspeccion(false);
           } else {
-            _modeloVista.iniciarRuta(widget.idUsuario);
+            _mostrarFormularioInspeccion(true);
           }
         },
         onClearDestino: () {
@@ -292,7 +349,7 @@ class _InterfazChoferScreenState extends State<InterfazChoferScreen> {
         idUsuario: widget.idUsuario,
         onEnviarIncidencia: (descripcion) {
           _reporteModelo.enviarIncidencia(
-            idVehiculo: widget.idUsuario,
+            idVehiculo: _modeloVista.idVehiculoAsignado ?? 0,
             descripcion: descripcion,
           );
         },
